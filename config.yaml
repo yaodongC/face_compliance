@@ -11,7 +11,7 @@ window_frames: 6        # frames per analysis window (temporal context)
 frame_max_width: 640    # downscale frames before sending to the VLM
 
 # Generation
-max_tokens: 640
+max_tokens: 1024
 temperature: 0.2
 
 paths:

@@ -38,6 +38,12 @@ def build_system_prompt(items) -> str:
               "distances or counts. Only report items with visible evidence. For process item p8,",
               "a drill drilling an unscreened/unbolted face is a 'violation'.",
               "",
+              "In each observation's 'evidence', describe what you ACTUALLY SEE in these frames",
+              "(e.g. 'a bolter boom pressed against the mesh on the left wall') -- do NOT copy the",
+              "checklist wording above. If you cannot see clear evidence for an item, omit it",
+              "rather than guessing. Keep 'narration' to one or two sentences about what is",
+              "happening right now in the frames.",
+              "",
               "Respond with ONLY a single JSON object, no prose, in exactly this shape:",
               _SCHEMA]
     return "\n".join(lines)
