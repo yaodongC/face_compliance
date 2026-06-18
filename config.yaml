@@ -1,0 +1,21 @@
+# vLLM OpenAI-compatible endpoint serving nvidia/Cosmos-Reason2-2B
+endpoint: "http://localhost:8000/v1"
+model: "cosmos-reason"
+
+# Front RGB camera topic in the ROS1 bags
+camera_topic: "/sensing/front/rgb/image_raw/compressed"
+
+# Analysis sampling
+sampling_sec: 5.0       # run the VLM every N seconds of footage
+window_frames: 6        # frames per analysis window (temporal context)
+frame_max_width: 640    # downscale frames before sending to the VLM
+
+# Generation
+max_tokens: 640
+temperature: 0.2
+
+paths:
+  regulation: "regulation.yaml"
+  video: "data/front_camera.mp4"
+  frame_index: "data/frames.idx"
+  analysis: "data/analysis.json"

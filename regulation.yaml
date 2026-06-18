@@ -1,0 +1,45 @@
+items:
+  - id: p1
+    kind: process
+    label: "Loose rock scaled / barred down before support"
+    evidence: "An operator or machine scaling/barring down loose rock from the back, walls, or face before screen and bolts are installed."
+  - id: p2
+    kind: process
+    label: "Back & wall screen installed tight to the face"
+    evidence: "Wire mesh/screen on the back and side walls drawn up close to the working face."
+  - id: p3
+    kind: process
+    label: "Face screen wrapped around the brow"
+    evidence: "Screen/mesh hung over the face and folded around the brow (the top edge where back meets face)."
+  - id: p4
+    kind: process
+    label: "Screen drawn tight to the side walls"
+    evidence: "Face/wall screen pulled snug against both side walls with little gap."
+  - id: p5
+    kind: process
+    label: "Bolt pattern installed on the leading edge (one side to the other)"
+    evidence: "A bolter/jumbo installing rock bolts in a row/grid across the screen, progressing from one wall toward the other."
+  - id: p6
+    kind: process
+    label: "Top row of face bolts up near the back"
+    evidence: "Bolts/plates installed in the upper part of the face, close to the back."
+  - id: p7
+    kind: process
+    label: "Bottom screen bolts secured near the floor / BOR"
+    evidence: "Bolts securing the bottom edge of the screen down near the floor (bottom of round / gradeline)."
+  - id: p8
+    kind: process
+    label: "Face fully supported before any face drilling"
+    evidence: "Production/face drilling only begins after screen and bolts are in place. A drill boom drilling an unscreened/unbolted face is a VIOLATION of this item."
+  - id: S1
+    kind: safety
+    label: "Workers clear of the unsupported high-risk zone"
+    evidence: "A person standing or working directly under an unbolted/unscreened brow or back."
+  - id: S2
+    kind: safety
+    label: "Working from supported toward unsupported ground; one-hole-one-bolt"
+    evidence: "Crew advancing from already-supported ground into unsupported ground, installing one bolt per hole. Working under bad ground first, or leaving open holes, is a problem."
+  - id: S3
+    kind: safety
+    label: "Appropriate equipment (canopy / no scissor lift in high stress)"
+    evidence: "A loader without a canopy loading a tall heading, or a scissor lift used in obviously stressed ground."
