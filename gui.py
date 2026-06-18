@@ -19,7 +19,7 @@ class Player(QtWidgets.QWidget):
         super().__init__()
         self.cfg = cfg
         data = json.loads(Path(cfg["paths"]["analysis"]).read_text())
-        self.steps = data["steps"]
+        self.steps = sorted(data["steps"], key=lambda s: s["t_sec"])
         self.items = data["meta"]["items"]
         self.cap = cv2.VideoCapture(cfg["paths"]["video"])
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 15.0
