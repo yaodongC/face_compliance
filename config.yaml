@@ -14,6 +14,12 @@ frame_max_width: 640    # downscale frames before sending to the VLM
 max_tokens: 1024
 temperature: 0.2
 
+# Compliance debounce / clearing (tuned for noisy real-model output)
+confirm_satisfied: 1     # satisfied windows before a process item locks
+confirm_violation: 2     # consecutive violation windows before locking a violation
+confirm_clear: 2         # compliant windows before a locked violation clears
+min_severity: "med"      # min safety-flag severity that counts: low|med|high
+
 paths:
   regulation: "regulation.yaml"
   video: "data/front_camera.mp4"

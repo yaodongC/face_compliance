@@ -34,7 +34,12 @@ def sample_windows(video_path, sampling_sec, window_frames):
 
 def run_analysis(cfg, *, stub=False) -> dict:
     items = load_regulation(cfg["paths"]["regulation"])
-    tracker = ComplianceTracker(items, lock_after=1)
+    tracker = ComplianceTracker(
+        items,
+        confirm_satisfied=cfg.get("confirm_satisfied", 1),
+        confirm_violation=cfg.get("confirm_violation", 2),
+        confirm_clear=cfg.get("confirm_clear", 2),
+        min_severity=cfg.get("min_severity", "med"))
     steps = []
     for i, (t_sec, frames) in enumerate(
             sample_windows(cfg["paths"]["video"], cfg["sampling_sec"], cfg["window_frames"])):
