@@ -66,7 +66,7 @@ def mesh_installs(events, gap=_CV["mesh_gap"], min_events=_CV["mesh_min_events"]
     return installs
 
 
-def mesh_count(events, t, gap=240, min_events=3):
+def mesh_count(events, t, gap=_CV["mesh_gap"], min_events=_CV["mesh_min_events"]):
     """Number of meshes installed by time t."""
     return sum(1 for i in mesh_installs(events, gap, min_events) if i["time"] <= t + 0.1)
 
@@ -111,7 +111,7 @@ def width_coverage(events, t, panel_w=_CV["width_panel_w"], face_x=FACE_X,
     merged = install_intervals(events, t, panel_w, face_x, min_hits)
     cov = sum(b - a for a, b in merged)
     frac = max(0.0, min(1.0, cov / span))
-    full = frac >= 0.98
+    full = frac >= _CV["full_coverage_frac"]
     return {"intervals": merged, "fraction": frac, "full": full,
             "verdict": "COMPLIANT" if full else "NOT SUPPORTED"}
 
@@ -168,7 +168,7 @@ def coverage_state(meshes, t, face_x=FACE_X, min_overlap=_CV["min_overlap"]):
         cursor = max(cursor, b)
     fraction = max(0.0, min(1.0, cov / span))
     # gaps? cursor must have reached fx1 with no hole
-    full = fraction >= 0.98
+    full = fraction >= _CV["full_coverage_frac"]
     # adjacent installed panels must overlap (next.x0 < prev.x1 - min_overlap)
     overlaps = True
     for p, q in zip(installed, installed[1:]):

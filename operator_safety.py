@@ -101,7 +101,8 @@ MIN_ORANGE = _OP["min_orange"]
 
 def detect_person(img, cfg, *, session=None) -> dict:
     h, w = img.shape[:2]
-    c = cv2.resize(img, (1000, int(h * 1000 / w)))
+    psw = _OP["person_send_w"]
+    c = cv2.resize(img, (psw, int(h * psw / w)))
     ok, buf = cv2.imencode(".jpg", c, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
     b64 = base64.b64encode(buf.tobytes()).decode()
     msgs = [{"role": "user", "content": [
@@ -109,7 +110,8 @@ def detect_person(img, cfg, *, session=None) -> dict:
         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]
     sess = session or requests
     r = sess.post(f"{cfg['endpoint']}/chat/completions",
-                  json={"model": cfg["model"], "messages": msgs, "max_tokens": 140,
+                  json={"model": cfg["model"], "messages": msgs,
+                        "max_tokens": _OP["person_max_tokens"],
                         "temperature": 0.0}, timeout=120).json()
     t = r["choices"][0]["message"]["content"]
     m = re.search(r"\{.*\}", t, re.S)
@@ -182,7 +184,7 @@ def detect_screen(img, cfg, *, session=None):
         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]
     sess = session or requests
     r = sess.post(f"{cfg['endpoint']}/chat/completions",
-                  json={"model": cfg["model"], "messages": msgs, "max_tokens": 120,
+                  json={"model": cfg["model"], "messages": msgs, "max_tokens": _OP["screen_max_tokens"],
                         "temperature": 0.0}, timeout=120).json()
     txt = r["choices"][0]["message"]["content"]
     m = re.search(r"\{.*\}", txt, re.S)

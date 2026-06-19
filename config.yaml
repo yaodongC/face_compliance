@@ -36,6 +36,9 @@ params:
     session_gap: 20.0
     face_band: [0.15, 0.10, 0.90, 0.85]
     screen_send_w: 1000
+    person_send_w: 1000
+    person_max_tokens: 140
+    screen_max_tokens: 120
   coverage:
     face_x: [0.20, 0.85]
     mesh_gap: 240
@@ -44,6 +47,7 @@ params:
     width_min_hits: 2
     width_bin_w: 0.02
     min_overlap: 0.02
+    full_coverage_frac: 0.98
     segments: 4
 
 paths:
