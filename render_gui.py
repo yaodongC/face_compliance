@@ -16,18 +16,30 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
+from coverage import coverage_state
 
-# BGR colours
-BANNER = {"DANGER": (40, 20, 120), "UNSUPPORTED": (44, 44, 192),
-          "DRILLING": (0, 102, 204), "NOT VERIFIED": (30, 150, 200),
-          "SUPPORTED": (60, 160, 60)}
+# BGR colours. Compliance is COVERAGE-driven: COMPLIANT only when the WHOLE face is
+# covered by OVERLAPPING bolted meshes; partial coverage is NOT supported.
+BANNER = {"DANGER": (40, 20, 120), "NOT SUPPORTED": (44, 44, 192),
+          "COMPLIANT": (60, 160, 60)}
 SUBTITLE = {
-    "DANGER": "Person under unsupported ground - clear the area",
-    "UNSUPPORTED": "End face not screened - treat as UNSUPPORTED",
-    "DRILLING": "Active face drilling - work in progress, not the supported state",
-    "NOT VERIFIED": "Face support not confirmed - human inspection required",
-    "SUPPORTED": "Face screened + booms parked, drilling done (assistive - still verify)",
+    "DANGER": "Operator in front while boom MOVING - drilling not stopped",
+    "NOT SUPPORTED": "Face NOT fully covered by overlapping bolted meshes",
+    "COMPLIANT": "Entire face covered by overlapping bolted meshes (assistive - still verify)",
 }
+
+
+def _danger_windows(events):
+    """Operator-in-danger-zone incident windows [start, end] from the event log."""
+    wins = []
+    for e in events:
+        if e.get("type") == "operator_in_danger_zone" and e.get("started_at") is not None:
+            wins.append((e["started_at"], e.get("cycle_sec", e["started_at"])))
+    return wins
+
+
+def _danger_active(dwins, csec):
+    return any(a - 0.1 <= csec <= b + 0.1 for a, b in dwins)
 ITEM_COLOR = {"verified": (70, 160, 70), "violation": (44, 44, 192), "not_verified": (130, 130, 130)}
 ITEM_MARK = {"verified": "[x]", "violation": "[!]", "not_verified": "[ ]"}
 
@@ -81,6 +93,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
     index = _load_index(index_path)
     events = _load_events(events_path)
     meshes = _load_meshes(meshes_path)
+    dwins = _danger_windows(events)
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or fps
 
@@ -106,7 +119,9 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         t = fno / vfps
         csec = index.get(fno, t) if index else t
         step = cur_step(t)
-        v = step["verdict"]
+        cov = coverage_state(meshes, csec)
+        danger = _danger_active(dwins, csec)
+        v = "DANGER" if danger else cov["verdict"]
         canvas = np.full((H, W, 3), 30, dtype=np.uint8)
 
         # banner
@@ -141,20 +156,26 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         cv2.putText(canvas, f"cycle {int(csec)//60:02d}:{int(csec)%60:02d}", (16, 92 + vid_h + 28),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 60), 2, cv2.LINE_AA)
 
-        # checklist panel
-        cv2.putText(canvas, "Face-support checklist", (panel_x, 110),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (235, 235, 235), 2, cv2.LINE_AA)
-        snap = step["checklist_snapshot"]
+        # compliance checklist (COVERAGE-driven, not booms-parked)
+        cv2.putText(canvas, "Compliance: full overlapping mesh coverage", (panel_x, 110),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 2, cv2.LINE_AA)
+        cov_items = [
+            ("Entire end face covered by mesh", "verified" if cov["full"] else "not_verified"),
+            ("Meshes overlap (no gaps)", "verified" if cov["overlaps"] else "not_verified"),
+            ("Operator clear of moving boom", "violation" if danger else "not_verified"),
+        ]
         y = 150
-        for it in items:
-            st = snap.get(it["id"], "not_verified")
+        for label, st in cov_items:
             c = ITEM_COLOR.get(st, (130, 130, 130))
             cv2.putText(canvas, ITEM_MARK.get(st, "[ ]"), (panel_x, y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2, cv2.LINE_AA)
-            for i, ln in enumerate(_wrap(it["label"], 30)):
+            for i, ln in enumerate(_wrap(label, 30)):
                 cv2.putText(canvas, ln, (panel_x + 44, y + i * 22), cv2.FONT_HERSHEY_SIMPLEX,
                             0.5, c, 1, cv2.LINE_AA)
-            y += 26 + 22 * max(1, len(_wrap(it["label"], 30)))
+            y += 26 + 22 * max(1, len(_wrap(label, 30)))
+        cv2.putText(canvas, f"face coverage: {cov['fraction']*100:.0f}%  ({cov['n_panels']} meshes)",
+                    (panel_x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 60), 2, cv2.LINE_AA)
+        y += 28
 
         # scene text
         y += 8
@@ -169,7 +190,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         # ordered by time, most recent at the bottom
         ey0 = 92 + vid_h + 44
         cv2.line(canvas, (10, ey0 - 16), (W - 10, ey0 - 16), (90, 90, 90), 1)
-        cv2.putText(canvas, "EVENT LOG (external memory) - ordered by time", (12, ey0),
+        cv2.putText(canvas, "Event log", (12, ey0),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 2, cv2.LINE_AA)
         shown = [e for e in events if e.get("cycle_sec", 0) <= csec + 0.1]
         for i, e in enumerate(shown[-7:]):

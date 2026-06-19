@@ -49,3 +49,15 @@ def test_orange_fraction_high_for_orange_low_for_yellow():
     bb = [0.0, 0.0, 1.0, 1.0]
     assert hi_vis_orange_fraction(orange, bb) > 0.5
     assert hi_vis_orange_fraction(yellow, bb) < 0.2
+
+
+def test_coverage_state_partial_vs_full():
+    from coverage import coverage_state, FACE_X
+    # two overlapping panels spanning the whole face band -> COMPLIANT
+    full = [{"bbox": [FACE_X[0], 0.2, 0.55, 0.8], "installed_at": 1},
+            {"bbox": [0.50, 0.2, FACE_X[1], 0.8], "installed_at": 2}]
+    s = coverage_state(full, 10)
+    assert s["full"] and s["overlaps"] and s["verdict"] == "COMPLIANT"
+    # one small panel -> NOT SUPPORTED (partial)
+    part = [{"bbox": [0.3, 0.2, 0.44, 0.8], "installed_at": 1}]
+    assert coverage_state(part, 10)["verdict"] == "NOT SUPPORTED"

@@ -37,6 +37,44 @@ def _col_span(bbox, cols, reach_frac=0.6):
     return range(max(0, c0), min(cols, c1 + 1))
 
 
+def coverage_state(meshes, t, face_x=FACE_X, min_overlap=0.02):
+    """Compliance from INSTALLED MESH PANELS only (booms-parked is NOT used).
+    COMPLIANT iff the installed panels cover the ENTIRE face band with OVERLAPS
+    between adjacent panels (per the regulation). Partial coverage is NOT
+    supported at all.
+
+    Returns {fraction, full, overlaps, verdict, n_panels}.
+    """
+    fx0, fx1 = face_x
+    span = fx1 - fx0
+    installed = sorted([m for m in meshes if m.get("installed_at", 0) <= t + 0.1],
+                       key=lambda m: m["bbox"][0])
+    if not installed:
+        return {"fraction": 0.0, "full": False, "overlaps": False,
+                "verdict": "NOT SUPPORTED", "n_panels": 0}
+    # union coverage of the face band
+    cov = 0.0
+    cursor = fx0
+    for m in installed:
+        a = max(fx0, m["bbox"][0]); b = min(fx1, m["bbox"][2])
+        if b <= cursor:
+            continue
+        cov += b - max(a, cursor)
+        cursor = max(cursor, b)
+    fraction = max(0.0, min(1.0, cov / span))
+    # gaps? cursor must have reached fx1 with no hole
+    full = fraction >= 0.98
+    # adjacent installed panels must overlap (next.x0 < prev.x1 - min_overlap)
+    overlaps = True
+    for p, q in zip(installed, installed[1:]):
+        if q["bbox"][0] > p["bbox"][2] - min_overlap:
+            overlaps = False
+            break
+    verdict = "COMPLIANT" if (full and overlaps) else "NOT SUPPORTED"
+    return {"fraction": round(fraction, 3), "full": full, "overlaps": overlaps,
+            "verdict": verdict, "n_panels": len(installed)}
+
+
 def build_coverage(events, cols=10):
     """Return (progression, covered_cols). progression = list of
     {cycle_sec, coverage} as columns get worked over time."""

@@ -40,11 +40,10 @@ def build_meshes(events):
         x = _install_x(e)
         if x is None:
             continue
-        act = (e.get("action") or "").lower()
-        installing = e["verdict"] == "OK_LOADING" or any(
-            k in act for k in ("screen", "mesh", "bolt", "fit", "load", "install"))
-        if not installing:
-            continue
+        # Every confirmed operator-in-front site is a screen-install location (the
+        # worker is at the face installing), whether the install was done safely
+        # (OK_LOADING) or dangerously (boom moving). Coverage tracks WHERE screens
+        # went in; the danger/compliance of HOW is recorded separately in the log.
         # same panel if within ~half a panel width of an existing centre
         hit = next((m for m in meshes if abs(m["_cx"] - x) < PANEL_W * 0.6), None)
         if hit is None:
