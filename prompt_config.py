@@ -6,18 +6,17 @@ default task (face_support); the screen prompt is a template whose `<W>`/`<H>` t
 are substituted with the sent-image size at call time.
 """
 from __future__ import annotations
-from pathlib import Path
 import yaml
+from task import task_dir
 
-_DIR = Path(__file__).resolve().parent / "prompts"
 _REQUIRED = {"system", "person", "screen"}
 
 
-def load(task: str = "face_support") -> dict:
-    """Load + validate a prompt bundle. A safety system must NOT run with missing or
-    malformed prompts, so fail LOUDLY at startup with a clear message rather than a
-    bare FileNotFoundError / KeyError deep in a worker."""
-    p = _DIR / f"{task}.yaml"
+def load(task: str | None = None) -> dict:
+    """Load + validate the active task's prompt bundle. A safety system must NOT run
+    with missing or malformed prompts, so fail LOUDLY at startup with a clear message
+    rather than a bare FileNotFoundError / KeyError deep in a worker."""
+    p = task_dir(task) / "prompts.yaml"
     if not p.exists():
         raise RuntimeError(f"SAFETY: prompt bundle not found: {p} — cannot start perception")
     try:

@@ -7,8 +7,8 @@ them. Modules read `PARAMS[...]` instead of defining their own constants, so the
 exactly one place to change a safety knob — no drift.
 """
 from __future__ import annotations
-from pathlib import Path
 import yaml
+from task import task_dir
 
 # Built-in defaults == the historical hardcoded constants (behaviour-preserving).
 DEFAULTS = {
@@ -80,10 +80,12 @@ def _merge(base, over):
     return out
 
 
-def load(path=None):
-    p = Path(path) if path else Path(__file__).resolve().parent / "config.yaml"
-    cfg = yaml.safe_load(p.read_text()) if p.exists() else {}
-    return validate(_merge(DEFAULTS, (cfg or {}).get("params", {})))
+def load(task_name=None):
+    """Params for a task = the bundle's params.yaml merged over the safe DEFAULTS,
+    then validated. Absent bundle -> DEFAULTS (still valid)."""
+    p = task_dir(task_name) / "params.yaml"
+    over = yaml.safe_load(p.read_text()) if p.exists() else {}
+    return validate(_merge(DEFAULTS, over or {}))
 
 
 PARAMS = load()

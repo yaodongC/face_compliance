@@ -1,0 +1,25 @@
+# Task params for face_support (merged over harness_config.DEFAULTS, validated at load)
+operator:
+  danger_roi: [0.45, 1.0, 0.20, 0.80]
+  motion_px_thresh: 25
+  boom_motion_thresh: 0.035
+  min_orange: 0.015
+  orange_hsv_lo: [3, 110, 110]
+  orange_hsv_hi: [20, 255, 255]
+  bbox: {min_area: 0.004, max_area: 0.25, max_aspect: 1.6}
+  session_gap: 20.0
+  face_band: [0.15, 0.10, 0.90, 0.85]
+  screen_send_w: 1000
+  person_send_w: 1000
+  person_max_tokens: 140
+  screen_max_tokens: 120
+coverage:
+  face_x: [0.20, 0.85]
+  mesh_gap: 240
+  mesh_min_events: 3
+  width_panel_w: 0.12
+  width_min_hits: 2
+  width_bin_w: 0.02
+  min_overlap: 0.02
+  full_coverage_frac: 0.98
+  segments: 4

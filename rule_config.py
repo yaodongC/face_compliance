@@ -1,4 +1,4 @@
-"""Externalized verdict RULES, loaded from rules/<task>.yaml.
+"""Externalized verdict RULES, loaded from the active task bundle (tasks/<task>/rules.yaml).
 
 The condition->verdict decision tables are config/data (editable, versionable,
 reviewable). The engine (rules_engine.decide) and the feature computation stay in
@@ -6,14 +6,12 @@ code. Each table is validated to have a fail-safe `default` at load, so a malfor
 rules bundle fails LOUDLY at startup rather than emitting a wrong/blank verdict.
 """
 from __future__ import annotations
-from pathlib import Path
 import yaml
+from task import task_dir
 
-_DIR = Path(__file__).resolve().parent / "rules"
 
-
-def load(task: str = "face_support") -> dict:
-    p = _DIR / f"{task}.yaml"
+def load(task: str | None = None) -> dict:
+    p = task_dir(task) / "rules.yaml"
     if not p.exists():
         raise RuntimeError(f"SAFETY: rules bundle not found: {p} — cannot decide verdicts")
     data = yaml.safe_load(p.read_text()) or {}

@@ -1,0 +1,8 @@
+# Example second task: PPE check. Same engine, different decision table.
+ppe:
+  rules:
+    - when: {helmet: false}
+      verdict: VIOLATION
+    - when: {vest: false}
+      verdict: VIOLATION
+  default: COMPLIANT

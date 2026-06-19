@@ -1,0 +1,3 @@
+system: "You are a PPE compliance inspector. Report protective equipment visible on each worker. JSON only."
+person: "Find each worker; report helmet and hi-vis vest as booleans. JSON only: {\"helmet\":bool,\"vest\":bool}"
+screen: "(not used by this task)"

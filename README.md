@@ -84,7 +84,29 @@ python3 render_gui.py --video data/full_cycle.mp4 \
   positives** — the VLM described it accurately ("an office environment with a
   desk, cables, and equipment") and refused to invent mine observations. The
   fail-safe design holds on completely out-of-domain input.
-- Unit tests: `python3 -m pytest -q` (45).
+- Unit tests: `python3 -m pytest -q`.
+
+## Tasks — one engine, many inspections
+An inspection task is a **declarative bundle** under `tasks/<name>/`, loaded by the
+same task-agnostic engine:
+```
+tasks/face_support/
+  params.yaml    # thresholds / ROIs (merged over harness_config.DEFAULTS, validated at load)
+  prompts.yaml   # VLM prompts (system / person / screen)
+  rules.yaml     # verdict decision tables (rules_engine: first-match, fail-safe default)
+```
+The active task is `config.yaml` `task:` (or env `HARNESS_TASK`). The engine
+(perception client, feature extractors, rules engine, event log, GUI) is shared;
+swapping the bundle runs a different inspection **with no code change** — see
+`tasks/demo/` (a PPE example) and `tests/test_task_bundle.py`. Per-domain *feature
+extractors* (what computes the booleans a rule consumes) are still code; the bundle
+is everything declarative. **Every bundle must be validated against its own golden
+eval set before go-live** — a well-formed but wrong rule is a hazard.
+
+> Safety-critical refactors here are gated by **output equivalence**: the rule layer
+> is locked by `tests/test_equivalence.py` (golden fixtures) and the full pipeline by
+> `tests/test_e2e.py` (rendered-frame + event-log hash). A change that alters any
+> verdict fails the build.
 
 ## Components
 | file | role |
