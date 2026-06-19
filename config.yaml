@@ -20,10 +20,32 @@ votes: 1
 vote_temperature: 0.6
 support_window: 3
 hazard_confirm: 2
-# fraction of danger-zone pixels that must change for the boom to count as MOVING
-# (an operator entering while the boom moves => non-compliant). Raise to be less
-# sensitive. Data clusters: <=0.023 stopped, >=0.046 moving; 0.035 sits in the gap.
-boom_motion_thresh: 0.035
+
+# --- harness parameters (single source of truth; see harness_config.DEFAULTS) ---
+# Thresholds/ROIs the rule layer uses. boom_motion_thresh data clusters: <=0.023
+# stopped, >=0.046 moving; 0.035 sits in the gap (raise to be less sensitive).
+params:
+  operator:
+    danger_roi: [0.45, 1.0, 0.20, 0.80]
+    motion_px_thresh: 25
+    boom_motion_thresh: 0.035
+    min_orange: 0.015
+    orange_hsv_lo: [3, 110, 110]
+    orange_hsv_hi: [20, 255, 255]
+    bbox: {min_area: 0.004, max_area: 0.25, max_aspect: 1.6}
+    session_gap: 20.0
+    face_band: [0.15, 0.10, 0.90, 0.85]
+    screen_send_w: 1000
+  coverage:
+    face_x: [0.20, 0.85]
+    mesh_gap: 240
+    mesh_min_events: 3
+    width_panel_w: 0.12
+    width_min_hits: 2
+    width_bin_w: 0.02
+    min_overlap: 0.02
+    segments: 4
+
 paths:
   regulation: regulation.yaml
   video: data/demo.mp4

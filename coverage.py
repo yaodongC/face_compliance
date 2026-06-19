@@ -17,9 +17,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from harness_config import PARAMS
 
+_CV = PARAMS["coverage"]   # single source of truth (config.yaml params.coverage)
 # face region of the frame that gets screened (fractions): exclude floor/edges
-FACE_X = (0.20, 0.85)
+FACE_X = tuple(_CV["face_x"])
 
 
 def _col_span(bbox, cols, reach_frac=0.6):
@@ -37,7 +39,7 @@ def _col_span(bbox, cols, reach_frac=0.6):
     return range(max(0, c0), min(cols, c1 + 1))
 
 
-def mesh_installs(events, gap=240, min_events=3):
+def mesh_installs(events, gap=_CV["mesh_gap"], min_events=_CV["mesh_min_events"]):
     """Count DISTINCT meshes installed, in time order, by TEMPORAL EPISODE.
 
     The operator bolts ONE mesh over a sustained burst of visits (small time gaps),
@@ -69,7 +71,8 @@ def mesh_count(events, t, gap=240, min_events=3):
     return sum(1 for i in mesh_installs(events, gap, min_events) if i["time"] <= t + 0.1)
 
 
-def install_intervals(events, t, panel_w=0.12, face_x=FACE_X, min_hits=2, bin_w=0.02):
+def install_intervals(events, t, panel_w=_CV["width_panel_w"], face_x=FACE_X,
+                      min_hits=_CV["width_min_hits"], bin_w=_CV["width_bin_w"]):
     """Merged covered x-intervals of the face at time t, requiring SUSTAINED install
     activity. A face region is 'covered' only where >= min_hits install detections
     accumulate - so the operator drifting through a spot once (e.g. while still
@@ -99,7 +102,8 @@ def install_intervals(events, t, panel_w=0.12, face_x=FACE_X, min_hits=2, bin_w=
     return merged
 
 
-def width_coverage(events, t, panel_w=0.12, face_x=FACE_X, min_hits=2):
+def width_coverage(events, t, panel_w=_CV["width_panel_w"], face_x=FACE_X,
+                   min_hits=_CV["width_min_hits"]):
     """Continuous face-width coverage at time t. COMPLIANT only when the ENTIRE
     face width is covered (no bare gaps), regardless of how many screens it took."""
     fx0, fx1 = face_x
@@ -112,7 +116,7 @@ def width_coverage(events, t, panel_w=0.12, face_x=FACE_X, min_hits=2):
             "verdict": "COMPLIANT" if full else "NOT SUPPORTED"}
 
 
-def segment_coverage(events, n=4, face_x=FACE_X):
+def segment_coverage(events, n=_CV["segments"], face_x=FACE_X):
     """Per-segment install time: the first time the operator works in each of n
     face segments (left->right). Returns a list of n times (or None). Per-mesh
     bboxes are not reliable, so coverage is tracked as n coarse face segments."""
@@ -138,7 +142,7 @@ def segment_state(seg_times, t):
             "verdict": "COMPLIANT" if full else "NOT SUPPORTED"}
 
 
-def coverage_state(meshes, t, face_x=FACE_X, min_overlap=0.02):
+def coverage_state(meshes, t, face_x=FACE_X, min_overlap=_CV["min_overlap"]):
     """Compliance from INSTALLED MESH PANELS only (booms-parked is NOT used).
     COMPLIANT iff the installed panels cover the ENTIRE face band with OVERLAPS
     between adjacent panels (per the regulation). Partial coverage is NOT

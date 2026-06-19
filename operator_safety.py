@@ -22,15 +22,17 @@ import re
 import cv2
 import numpy as np
 import requests
+from harness_config import PARAMS
 
+_OP = PARAMS["operator"]   # single source of truth (config.yaml params.operator)
 # danger-zone ROI as fractions [y0,y1,x0,x1] -- lower centre (booms + operator)
-DANGER_ROI = (0.45, 1.0, 0.20, 0.80)
-MOTION_PX_THRESH = 25      # per-pixel abs-diff threshold
-# Fraction of danger-zone pixels that must change for the boom to count as MOVING.
-# Set in the natural gap of the data (boom motions cluster <=0.023 stopped vs
-# >=0.046 moving), so a barely-twitching boom is not flagged. Override per-run with
-# `boom_motion_thresh` in config.yaml.
-MOTION_FRAC_THRESH = 0.035
+DANGER_ROI = tuple(_OP["danger_roi"])
+MOTION_PX_THRESH = _OP["motion_px_thresh"]      # per-pixel abs-diff threshold
+# Fraction of danger-zone pixels that must change for the boom to count as MOVING
+# (data clusters <=0.023 stopped vs >=0.046 moving). See params.operator.
+MOTION_FRAC_THRESH = _OP["boom_motion_thresh"]
+_ORANGE_LO = tuple(_OP["orange_hsv_lo"])
+_ORANGE_HI = tuple(_OP["orange_hsv_hi"])
 
 PERSON_PROMPT = (
     'Underground mine, camera on a drill jumbo facing the rock face. Find the '
@@ -80,11 +82,12 @@ def hi_vis_orange_fraction(img, bbox) -> float:
     if crop.size == 0:
         return 0.0
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, (3, 110, 110), (20, 255, 255))
+    mask = cv2.inRange(hsv, _ORANGE_LO, _ORANGE_HI)
     return float((mask > 0).mean())
 
 
-def _bbox_ok(bbox, min_area=0.004, max_area=0.25, max_aspect_wh=1.6) -> bool:
+def _bbox_ok(bbox, min_area=_OP["bbox"]["min_area"], max_area=_OP["bbox"]["max_area"],
+             max_aspect_wh=_OP["bbox"]["max_aspect"]) -> bool:
     """Reject degenerate / non-person bboxes (thin boom lines, whole-frame, etc.).
     People are roughly upright, so width/height should not be very large."""
     if not bbox:
@@ -98,7 +101,7 @@ def _bbox_ok(bbox, min_area=0.004, max_area=0.25, max_aspect_wh=1.6) -> bool:
 
 
 # minimum hi-vis-orange fraction in the bbox to accept a person (classical gate)
-MIN_ORANGE = 0.015
+MIN_ORANGE = _OP["min_orange"]
 
 
 def detect_person(img, cfg, *, session=None) -> dict:
@@ -165,8 +168,8 @@ def annotate(frame, person_bbox=None, verdict="NO_PERSON", action="",
 
 
 # face band the screens are bolted onto (clamp grounding to here): [x0,y0,x1,y1]
-FACE_BAND = (0.15, 0.10, 0.90, 0.85)
-_SCREEN_SEND_W = 1000
+FACE_BAND = tuple(_OP["face_band"])
+_SCREEN_SEND_W = _OP["screen_send_w"]
 
 
 def detect_screen(img, cfg, *, session=None):
@@ -208,7 +211,7 @@ def detect_screen(img, cfg, *, session=None):
             "screen_bbox": [round(x, 3) for x in cl]}
 
 
-def classify_sessions(events, gap=20.0, motion_thresh=MOTION_FRAC_THRESH):
+def classify_sessions(events, gap=_OP["session_gap"], motion_thresh=MOTION_FRAC_THRESH):
     """Group operator-in-front detections into reload SESSIONS and judge each by the
     boom state AT ENTRY. The operator MUST enter the zone to reload meshes/bolts -
     that is normal. It is non-compliant ONLY if the boom was still operating when he
