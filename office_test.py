@@ -25,7 +25,7 @@ import operator_safety as osf
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="rtsp://root:root@10.20.30.40:554/cam0_0")
+    ap.add_argument("--url", help="rtsp:// URL (default: config.yaml `input`); creds via $RTSP_USER/$RTSP_PASS")
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--n", type=int, default=8)
     ap.add_argument("--every", type=float, default=3.0)
@@ -35,8 +35,9 @@ def main():
     Path(a.save).mkdir(parents=True, exist_ok=True)
     sess = requests.Session()
 
-    src = open_source(a.url)
-    print(f"connected to {a.url}\n")
+    url = a.url or cfg.get("input")          # env vars expanded inside open_source
+    src = open_source(url)
+    print(f"connected to {url.split('@')[-1] if '@' in url else url}\n")   # don't echo creds
     rows, last = [], 0.0
     for ts, frame in src.frames():
         if time.time() - last < a.every:

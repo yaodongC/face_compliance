@@ -42,13 +42,20 @@ RTSP camera** — same code path.
 ## Inputs — configurable (file or live RTSP)
 `live_source.py` is one frame source for both:
 ```python
-open_source("data/full_cycle.mp4")                      # recorded file
-open_source("rtsp://root:root@10.20.30.40:554/cam0_0")  # live camera (nvh264dec, HW decode)
+open_source("data/full_cycle.mp4")                              # recorded file
+open_source("rtsp://${RTSP_USER}:${RTSP_PASS}@10.20.30.40:554/cam0_0")  # live (HW decode)
 ```
-Set the live input in **config.yaml**:
+Set the live input in **config.yaml**; **credentials come from the environment**, not
+the committed config:
 ```yaml
-input: rtsp://root:root@10.20.30.40:554/cam0_0   # or a file path, e.g. data/full_cycle.mp4
+input: rtsp://${RTSP_USER}:${RTSP_PASS}@10.20.30.40:554/cam0_0   # or a file path
 ```
+```bash
+export RTSP_USER=<user> RTSP_PASS=<pass>   # expanded at runtime by live_source
+```
+`${...}` placeholders in `input` are expanded from env vars, so the literal URL is
+only ever in memory. (Camera passwords must never be committed; rotate any that have
+been.)
 
 ## Run it
 ```bash

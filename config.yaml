@@ -2,8 +2,10 @@ endpoint: http://localhost:8000/v1
 model: vlm
 camera_topic: /sensing/front/rgb/image_raw/compressed
 # GUI input for the LIVE monitor (live_gui.py): an MP4 file path OR an rtsp:// URL.
-# Examples: data/full_cycle.mp4  |  rtsp://root:root@10.20.30.40:554/cam0_0
-input: rtsp://root:root@10.20.30.40:554/cam0_0
+# Credentials are NOT stored here — they come from env vars expanded at runtime:
+#   export RTSP_USER=<user> RTSP_PASS=<pass>
+# Examples: data/full_cycle.mp4  |  rtsp://${RTSP_USER}:${RTSP_PASS}@10.20.30.40:554/cam0_0
+input: rtsp://${RTSP_USER}:${RTSP_PASS}@10.20.30.40:554/cam0_0
 sampling_sec: 5.0
 window_frames: 1
 frame_max_width: 1200

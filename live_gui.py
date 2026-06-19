@@ -7,7 +7,8 @@ runs in a background thread so the feed stays smooth; the main loop composes the
 at display rate from the latest shared state.
 
   python3 live_gui.py                      # uses config.yaml `input:`
-  python3 live_gui.py --input rtsp://root:root@10.20.30.40:554/cam0_0 --display
+  export RTSP_USER=... RTSP_PASS=...        # credentials via env, never committed
+  python3 live_gui.py --input 'rtsp://${RTSP_USER}:${RTSP_PASS}@10.20.30.40:554/cam0_0' --display
   python3 live_gui.py --input data/full_cycle.mp4 --seconds 60 --out data/live.mp4
 """
 from __future__ import annotations

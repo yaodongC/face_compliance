@@ -5,12 +5,13 @@ code can run on a camera. RTSP is decoded with the Jetson hardware decoder
 (`nvh264dec`) via GStreamer, dropping to the latest frame (low latency) and
 auto-reconnecting on drop.
 
-    src = open_source("rtsp://root:root@10.20.30.40:554/cam0_0")   # live
+    src = open_source("rtsp://${RTSP_USER}:${RTSP_PASS}@10.20.30.40:554/cam0_0")   # live
     src = open_source("data/full_cycle.mp4")                       # file
     for ts, frame in src.frames():
         ...
 """
 from __future__ import annotations
+import os
 import time
 from pathlib import Path
 import cv2
@@ -29,8 +30,10 @@ class LiveSource:
     (wall_time, bgr); for RTSP it reconnects on failure."""
 
     def __init__(self, spec: str, latency: int = 200, reconnect: bool = True):
-        self.spec = spec
-        self.is_rtsp = spec.startswith("rtsp://")
+        # expand ${RTSP_USER}/${RTSP_PASS} etc. from the environment so credentials
+        # are never committed in config; the literal URL is only ever in memory
+        self.spec = os.path.expandvars(spec)
+        self.is_rtsp = self.spec.startswith("rtsp://")
         self.latency = latency
         self.reconnect = reconnect and self.is_rtsp
         self.cap = None
