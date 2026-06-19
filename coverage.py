@@ -37,6 +37,33 @@ def _col_span(bbox, cols, reach_frac=0.6):
     return range(max(0, c0), min(cols, c1 + 1))
 
 
+def mesh_installs(events, sep=0.10, min_hits=2):
+    """Count DISTINCT meshes installed, in time order. The operator returns to the
+    SAME spot repeatedly to fit bolts for one mesh; a NEW mesh is a new SUSTAINED
+    install location (>= sep away from existing mesh centres, reached >= min_hits
+    times so a single drift does not count). The number of meshes is emergent -
+    it depends on the face size and is NOT assumed. ESTIMATE (per-mesh detection
+    from this footage is not exact)."""
+    clusters, installs = [], []
+    for e in sorted([e for e in events if e.get("person_bbox")], key=lambda x: x["cycle_sec"]):
+        cx = (e["person_bbox"][0] + e["person_bbox"][2]) / 2.0
+        hit = next((c for c in clusters if abs(c["cx"] - cx) <= sep), None)
+        if hit is None:
+            hit = {"cx": cx, "hits": 0, "counted": False}
+            clusters.append(hit)
+        hit["hits"] += 1
+        hit["cx"] = (hit["cx"] * (hit["hits"] - 1) + cx) / hit["hits"]
+        if not hit["counted"] and hit["hits"] >= min_hits:
+            hit["counted"] = True
+            installs.append({"time": e["cycle_sec"], "cx": round(hit["cx"], 3)})
+    return installs
+
+
+def mesh_count(events, t, sep=0.10, min_hits=2):
+    """Number of meshes installed by time t."""
+    return sum(1 for i in mesh_installs(events, sep, min_hits) if i["time"] <= t + 0.1)
+
+
 def install_intervals(events, t, panel_w=0.12, face_x=FACE_X, min_hits=2, bin_w=0.02):
     """Merged covered x-intervals of the face at time t, requiring SUSTAINED install
     activity. A face region is 'covered' only where >= min_hits install detections

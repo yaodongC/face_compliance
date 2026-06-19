@@ -78,18 +78,14 @@ def main():
                        description=f"operator reloaded with boom STOPPED (compliant entry): {s['action']}",
                        bbox=s["person_bbox"], evidence=ev, source="operator_safety")
 
-        # 3) install-activity coverage milestones (ASSISTIVE: per-mesh detection is
-        #    not reliable; we log when continuous face-width coverage advances). The
-        #    number of screens is not assumed (depends on face size).
-        from coverage import width_coverage
-        last = 0.0
-        for e in sorted([x for x in ops if x.get("person_bbox")], key=lambda x: x["cycle_sec"]):
-            frac = width_coverage(ops, e["cycle_sec"])["fraction"]
-            if frac >= last + 0.10:
-                lg.log(EL.SCREEN_INSTALLED, e["cycle_sec"], severity=EL.INFO,
-                       description=f"install activity: face-width coverage ~{frac*100:.0f}% (assistive)",
-                       source="coverage", coverage=round(frac, 2))
-                last = frac
+        # 3) mesh-install milestones (ESTIMATE: a new mesh = a new SUSTAINED install
+        #    location; the total number of screens depends on face size and is not
+        #    assumed). Per-mesh detection from this footage is not exact.
+        from coverage import mesh_installs
+        for k, ins in enumerate(mesh_installs(ops)):
+            lg.log(EL.SCREEN_INSTALLED, ins["time"], severity=EL.INFO,
+                   description=f"mesh #{k+1} installed (estimate)", source="coverage",
+                   mesh=k + 1, cx=ins["cx"])
 
     # report
     s = lg.summary()

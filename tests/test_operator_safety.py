@@ -75,3 +75,18 @@ def test_classify_sessions_entry_based():
     assert len(sess) == 2
     assert sess[0]["verdict"] == "NON_COMPLIANT_ENTRY"   # entered while boom moving
     assert sess[1]["verdict"] == "SAFE_RELOAD"           # entered while boom stopped
+
+
+def test_mesh_installs_counts_distinct_sustained_locations():
+    from coverage import mesh_installs, mesh_count
+    evs = [
+        {"cycle_sec": 10, "person_bbox": [0.25, 0.5, 0.35, 0.7]},  # loc A
+        {"cycle_sec": 20, "person_bbox": [0.26, 0.5, 0.36, 0.7]},  # loc A again -> mesh 1
+        {"cycle_sec": 30, "person_bbox": [0.55, 0.5, 0.65, 0.7]},  # loc B (single, transient)
+        {"cycle_sec": 40, "person_bbox": [0.25, 0.5, 0.35, 0.7]},  # back to A (same mesh)
+        {"cycle_sec": 50, "person_bbox": [0.56, 0.5, 0.66, 0.7]},  # loc B again -> mesh 2
+    ]
+    ins = mesh_installs(evs, sep=0.10, min_hits=2)
+    assert len(ins) == 2                 # two distinct sustained locations
+    assert mesh_count(evs, 25) == 1      # only loc A counted by t=25
+    assert mesh_count(evs, 99) == 2
