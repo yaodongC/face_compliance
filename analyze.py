@@ -47,16 +47,15 @@ def run_analysis(cfg, *, stub=False) -> dict:
         steps.append({
             "t_sec": round(t_sec, 3),
             "scene": perception.get("scene", ""),
-            "activity": perception.get("activity", "none"),
             "perception": perception,
             "checklist_snapshot": tracker.snapshot(),
             "verdict": tracker.verdict(),
             "hazard_note": tracker.hazard_note(),
         })
         print(f"[analyze] t={t_sec:6.1f}s  {steps[-1]['verdict']:13s} "
-              f"act={perception.get('activity','?'):8s} "
-              f"mesh={int(bool(perception.get('mesh_visible')))} "
-              f"bolt={int(bool(perception.get('bolts_visible')))}  "
+              f"scr={int(bool(perception.get('face_screened')))} "
+              f"drill={int(bool(perception.get('drill_active')))} "
+              f"park={int(bool(perception.get('arms_parked')))}  "
               f"{perception.get('scene','')[:55]}")
     out = {"meta": {"video": cfg["paths"]["video"], "model": cfg["model"],
                     "sampling_sec": cfg["sampling_sec"], "window": cfg["window_frames"],

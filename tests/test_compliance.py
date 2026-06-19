@@ -1,121 +1,93 @@
 from pathlib import Path
 from compliance import (SafetyTracker, ChecklistItem, load_regulation,
                         NOT_VERIFIED, VERIFIED, VIOLATION,
-                        DANGER, UNSUPPORTED, NOT_VERIFIED_VERDICT, SUPPORTED)
+                        DANGER, UNSUPPORTED, DRILLING, NOT_VERIFIED_VERDICT, SUPPORTED)
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def perc(mesh=False, bolts=False, gss="none_visible", call="UNSUPPORTED",
-         activity="none", danger=False, people=False, scene="s", note="n"):
-    return {"scene": scene, "activity": activity, "people_visible": people,
-            "person_in_danger": danger, "mesh_visible": mesh, "bolts_visible": bolts,
-            "ground_support_state": gss, "safety_call": call, "note": note}
+def perc(screened=False, drill=False, parked=False, danger=False):
+    return {"scene": "s", "face_screened": screened, "drill_active": drill,
+            "arms_parked": parked, "person_in_danger": danger, "note": "n"}
 
 
-SUPPORTED_P = perc(mesh=True, bolts=True, gss="full", call="SUPPORTED")
-BARE_P = perc()  # unsupported bare face
+SUP = perc(screened=True, parked=True)         # compliant: screened + parked, no drill
+DRILL = perc(screened=False, drill=True)       # active drilling on a bare face
+BARE = perc(screened=False)                    # not screened, not drilling
 
 
 def test_loads_regulation_items():
     items = load_regulation(ROOT / "regulation.yaml")
     assert all(isinstance(i, ChecklistItem) for i in items)
-    assert any(i.id == "support" for i in items)
-    assert all(i.label for i in items)
+    assert any(i.id == "face_screen" for i in items)
 
 
-def test_defaults_are_not_verified():
+def test_defaults_not_verified():
     t = SafetyTracker(support_window=3)
-    snap = t.snapshot()
-    assert set(snap.values()) == {NOT_VERIFIED}
+    assert set(t.snapshot().values()) == {NOT_VERIFIED}
     assert t.verdict() != SUPPORTED
 
 
-def test_bare_face_is_unsupported_and_nothing_verified():
-    t = SafetyTracker(support_window=3)
-    for i in range(3):
-        t.update(i, BARE_P)
-    assert t.verdict() == UNSUPPORTED
-    assert set(t.snapshot().values()) == {NOT_VERIFIED}
-
-
-def test_sustained_support_is_verified():
+def test_sustained_supported_is_supported():
     t = SafetyTracker(support_window=2)
-    t.update(1, SUPPORTED_P)
-    assert t.verdict() != SUPPORTED        # one window is not enough
-    t.update(2, SUPPORTED_P)
+    t.update(1, SUP)
+    assert t.verdict() != SUPPORTED          # one window not enough
+    t.update(2, SUP)
     assert t.verdict() == SUPPORTED
     snap = t.snapshot()
-    assert snap["bolts"] == VERIFIED and snap["mesh"] == VERIFIED and snap["support"] == VERIFIED
+    assert snap["face_screen"] == VERIFIED and snap["arms_parked"] == VERIFIED
 
 
-def test_any_unsupported_in_window_drags_down():
-    t = SafetyTracker(support_window=3)
-    t.update(1, SUPPORTED_P)
-    t.update(2, SUPPORTED_P)
-    t.update(3, BARE_P)                    # one bad window in the buffer
-    assert t.verdict() == UNSUPPORTED
-    assert t.snapshot()["support"] == NOT_VERIFIED
-
-
-def test_mesh_requires_bolts_conjunction():
+def test_one_drilling_window_blocks_supported():
     t = SafetyTracker(support_window=2)
-    mesh_only = perc(mesh=True, bolts=False, gss="none_visible", call="UNSUPPORTED")
-    t.update(1, mesh_only)
-    t.update(2, mesh_only)
-    snap = t.snapshot()
-    assert snap["mesh"] == NOT_VERIFIED
-    assert snap["bolts"] == NOT_VERIFIED
+    t.update(1, SUP)
+    t.update(2, DRILL)
+    assert t.verdict() != SUPPORTED
+
+
+def test_sustained_drilling_is_DRILLING():
+    t = SafetyTracker(support_window=3, hazard_confirm=2)
+    t.update(1, DRILL)
+    t.update(2, DRILL)
+    assert t.verdict() == DRILLING
+    assert t.snapshot()["no_active_drilling"] == VIOLATION
+
+
+def test_single_drill_frame_debounced():
+    # one drilling frame must not raise DRILLING when hazard_confirm=2 (but it does
+    # block SUPPORTED)
+    t = SafetyTracker(support_window=3, hazard_confirm=2)
+    t.update(1, DRILL)
+    assert t.verdict() != DRILLING
+    assert t.verdict() != SUPPORTED
+
+
+def test_unscreened_face_is_unsupported():
+    t = SafetyTracker(support_window=2)
+    t.update(1, BARE)
+    t.update(2, BARE)
     assert t.verdict() == UNSUPPORTED
 
 
-def test_person_in_danger_raises_danger_and_violation():
+def test_person_in_danger_raises_danger():
     t = SafetyTracker(support_window=3, hazard_confirm=1)
-    t.update(1, perc(people=True, danger=True))
+    t.update(1, perc(danger=True))
     assert t.verdict() == DANGER
     assert t.snapshot()["worker_safe"] == VIOLATION
-    assert t.hazard_note()
 
 
-def test_drilling_unsupported_raises_danger():
-    t = SafetyTracker(support_window=3, hazard_confirm=1)
-    t.update(1, perc(activity="drilling"))
-    assert t.verdict() == DANGER
-    assert t.snapshot()["drill_safe"] == VIOLATION
-
-
-def test_single_hallucinated_hazard_is_debounced():
-    # one drilling frame must NOT raise DANGER when hazard_confirm=2
+def test_person_danger_debounced():
     t = SafetyTracker(support_window=3, hazard_confirm=2)
-    t.update(1, perc(activity="drilling"))
+    t.update(1, perc(danger=True))
     assert t.verdict() != DANGER
-    assert t.snapshot()["drill_safe"] != VIOLATION
-    t.update(2, perc(activity="drilling"))   # sustained -> now it fires
+    t.update(2, perc(danger=True))
     assert t.verdict() == DANGER
 
 
-def test_partial_support_is_treated_as_unsupported():
-    # partial support is NOT good enough for a face you may work under -> unsafe
+def test_supported_requires_parked_and_screened():
+    # screened but booms NOT parked -> not the compliant rest-state
     t = SafetyTracker(support_window=2)
-    partial = perc(mesh=True, bolts=True, gss="partial", call="PARTIAL")
-    t.update(1, partial)
-    t.update(2, partial)
-    assert t.verdict() == UNSUPPORTED
-    assert t.snapshot()["support"] == NOT_VERIFIED
-
-
-def test_not_verified_only_when_genuinely_uncertain():
-    # model cannot tell (no positive support, no clear 'unsupported') -> NOT VERIFIED
-    t = SafetyTracker(support_window=2)
-    uncertain = perc(mesh=False, bolts=False, gss="cannot_tell", call="CANNOT_VERIFY")
-    t.update(1, uncertain)
-    t.update(2, uncertain)
-    assert t.verdict() == NOT_VERIFIED_VERDICT
-
-
-def test_drilling_when_supported_is_not_a_hazard():
-    t = SafetyTracker(support_window=2)
-    t.update(1, SUPPORTED_P)
-    t.update(2, perc(mesh=True, bolts=True, gss="full", call="SUPPORTED", activity="drilling"))
-    assert t.verdict() == SUPPORTED
-    assert t.snapshot()["drill_safe"] != VIOLATION
+    screened_only = perc(screened=True, parked=False)
+    t.update(1, screened_only)
+    t.update(2, screened_only)
+    assert t.verdict() != SUPPORTED

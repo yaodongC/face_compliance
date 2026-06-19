@@ -1,24 +1,25 @@
 """Validation harness: score the safety harness against hand-labelled ground truth.
 
-For each labelled sequence it runs the full perception+consensus+aggregation
-pipeline and compares the result to the human label. The metric that matters for
-a safety-critical system is FALSE-SAFE: a truly-unsupported/hazardous face that
-the system reports as SUPPORTED. That count MUST be zero. Over-caution (reporting
-UNSUPPORTED/NOT VERIFIED when nothing is wrong) is acceptable.
+Metrics map directly to SUCCESS_CRITERIA.md:
+  C1 false_safe == 0   : a not-supported face is NEVER called SUPPORTED (critical).
+  C2 positive recall   : truly-supported (bolted) faces ARE called SUPPORTED.
+  C3 negatives flagged : not-supported faces get a non-safe verdict.
+  C4 accuracy >= 0.90  : band(pred) == band(truth), every error biased to over-caution.
 
-Usage: python3 eval.py [--config config.yaml] [--labels eval/labels.json]
-Requires the VLM server to be up (uses the real model, with K-vote consensus).
+Usage: python3 eval.py [--config config.yaml] [--labels eval/labels.json] [--sampling 2.0]
+Requires the local VLM server (offline at inference).
 """
 from __future__ import annotations
 import argparse
 import collections
+import copy
 import json
 from pathlib import Path
-import copy
 import yaml
 import analyze
 
-UNSAFE_TRUTHS = {"UNSUPPORTED", "DANGER", "NOT VERIFIED"}
+SUPPORTED = "SUPPORTED"
+NOT_SUPPORTED = {"UNSUPPORTED", "DANGER", "NOT VERIFIED"}
 
 
 def _run_sequence(cfg, clip, out_json):
@@ -31,59 +32,73 @@ def _run_sequence(cfg, clip, out_json):
 
 def evaluate(cfg, labels):
     rows = []
-    false_safe = 0
     for seq in labels["sequences"]:
         clip = seq["clip"]
         if not Path(clip).exists():
-            rows.append({"name": seq["name"], "truth": seq["truth"],
-                         "error": "clip missing"})
+            rows.append({"name": seq["name"], "truth": seq["truth"], "error": "clip missing"})
             continue
-        out_json = f"eval/{seq['name']}.analysis.json"
-        verdicts, steps = _run_sequence(cfg, clip, out_json)
+        verdicts, steps = _run_sequence(cfg, clip, f"eval/{seq['name']}.analysis.json")
         dist = collections.Counter(verdicts)
-        any_supported = "SUPPORTED" in dist
+        any_supported = SUPPORTED in dist
         final = verdicts[-1] if verdicts else "NOT VERIFIED"
-        # how badly did the raw model hallucinate support on this clip?
-        bolt_fp = sum(1 for s in steps if s["perception"].get("bolts_visible"))
         truth = seq["truth"]
-        fs = truth in UNSAFE_TRUTHS and any_supported
-        false_safe += int(fs)
+        if truth == SUPPORTED:
+            false_safe = False
+            correct = (final == SUPPORTED)
+        else:  # not-supported ground truth
+            false_safe = any_supported            # a SUPPORTED window here is a false-safe
+            correct = not any_supported           # must never certify support
         rows.append({"name": seq["name"], "truth": truth, "final": final,
                      "dist": dict(dist), "any_supported": any_supported,
-                     "false_safe": fs, "bolt_fp": f"{bolt_fp}/{len(steps)}"})
-    return rows, false_safe
+                     "false_safe": false_safe, "correct": correct,
+                     "windows": len(steps)})
+    return rows
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--labels", default="eval/labels.json")
+    ap.add_argument("--sampling", type=float, default=2.0,
+                    help="override sampling_sec so the support_window streak is reachable in a clip")
     args = ap.parse_args()
     cfg = yaml.safe_load(Path(args.config).read_text())
+    if args.sampling:
+        cfg["sampling_sec"] = args.sampling
     labels = json.loads(Path(args.labels).read_text())
 
-    rows, false_safe = evaluate(cfg, labels)
+    rows = evaluate(cfg, labels)
+    scored = [r for r in rows if "error" not in r]
 
-    print(f"\n=== Safety-harness evaluation (model={cfg['model']}, votes={cfg.get('votes',1)}) ===")
-    print(f"{'seq':6} {'truth':12} {'final':12} {'any_SUPPORTED':14} {'bolt_halluc':12} verdicts")
+    print(f"\n=== Evaluation (model={cfg['model']}, votes={cfg.get('votes',1)}, "
+          f"frame_max_width={cfg.get('frame_max_width')}, face_crop={bool(cfg.get('face_crop'))}, "
+          f"sampling={cfg['sampling_sec']}s) ===")
+    print(f"{'seq':10} {'truth':12} {'final':12} {'correct':8} {'false_safe':10} verdicts")
     for r in rows:
         if "error" in r:
-            print(f"{r['name']:6} {r['truth']:12} ERROR: {r['error']}")
+            print(f"{r['name']:10} {r['truth']:12} ERROR {r['error']}")
             continue
-        flag = "  <-- FALSE-SAFE!" if r["false_safe"] else ""
-        print(f"{r['name']:6} {r['truth']:12} {r['final']:12} "
-              f"{str(r['any_supported']):14} {r['bolt_fp']:12} {r['dist']}{flag}")
+        fs = "  <-- FALSE-SAFE!" if r["false_safe"] else ""
+        print(f"{r['name']:10} {r['truth']:12} {r['final']:12} "
+              f"{str(r['correct']):8} {str(r['false_safe']):10} {r['dist']}{fs}")
 
-    scored = [r for r in rows if "error" not in r]
-    correct = sum(1 for r in scored
-                  if r["truth"] in UNSAFE_TRUTHS and not r["any_supported"])
-    print("\n--- scorecard ---")
-    print(f"sequences scored : {len(scored)}")
-    print(f"FALSE-SAFE (truly-unsafe called SUPPORTED): {false_safe}   "
-          f"{'PASS (0)' if false_safe == 0 else 'FAIL — UNSAFE'}")
-    print(f"flagged-unsafe correctly (no SUPPORTED on an unsafe face): {correct}/{len(scored)}")
-    print("overall:", "PASS" if false_safe == 0 else "FAIL")
-    return 0 if false_safe == 0 else 1
+    false_safe_n = sum(r["false_safe"] for r in scored)
+    sup = [r for r in scored if r["truth"] == SUPPORTED]
+    neg = [r for r in scored if r["truth"] != SUPPORTED]
+    pos_recall = sum(r["final"] == SUPPORTED for r in sup) / len(sup) if sup else float("nan")
+    neg_correct = sum(r["correct"] for r in neg)
+    accuracy = sum(r["correct"] for r in scored) / len(scored) if scored else 0.0
+
+    print("\n--- scorecard (vs SUCCESS_CRITERIA.md) ---")
+    print(f"C1 false-safe count : {false_safe_n}   {'PASS' if false_safe_n == 0 else 'FAIL — UNSAFE'}")
+    print(f"C2 positive recall  : {pos_recall:.2f} ({sum(r['final']==SUPPORTED for r in sup)}/{len(sup)} supported->SUPPORTED)   "
+          f"{'PASS' if sup and pos_recall >= 0.8 else 'FAIL'}")
+    print(f"C3 negatives flagged: {neg_correct}/{len(neg)}   {'PASS' if neg_correct == len(neg) else 'FAIL'}")
+    print(f"C4 accuracy         : {accuracy:.2f}   {'PASS' if accuracy >= 0.90 else 'FAIL'}")
+    overall = (false_safe_n == 0 and sup and pos_recall >= 0.8
+               and neg_correct == len(neg) and accuracy >= 0.90)
+    print(f"\nOVERALL: {'PASS' if overall else 'NOT YET'}")
+    return 0 if overall else 1
 
 
 if __name__ == "__main__":

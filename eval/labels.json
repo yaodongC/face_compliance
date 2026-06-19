@@ -1,11 +1,61 @@
 {
-  "note": "Ground truth labelled by a human (the assistant) viewing a representative frame of each sequence. The entire COMPLETE session (bags 0-14, ~13 min) is one parked vehicle at a single BARE, UNSUPPORTED development face: rock + survey paint + a muck pile + a parked drill boom; no wire mesh, no rock-bolt plates, no people, no active drilling. So every sequence is UNSUPPORTED. The CRITICAL metric is false_safe = 0: the harness must never call a truly-unsupported face SUPPORTED. (SUPPORTED and DANGER detection are exercised by the unit tests + stub, since no real supported/hazard footage exists in the copied bags.)",
-  "truth_set": ["SUPPORTED", "UNSUPPORTED", "NOT VERIFIED", "DANGER"],
+  "note": "Re-labelled (face-focused). SUPPORTED = compliant end-state: end FACE screened+bolted, drilling COMPLETE, drill booms PARKED to the sides (user: 'in the very end the face is bolted, arms to each side as parking'). NOT-supported = active drilling at the face (work in progress / face not in the supported rest-state), incl. bags 40,50 which look meshed but are actively drilling. Anchors: demo clip bags 0-3 user-said bolting-not-started; end bags 54-56 user-confirmed bolted+parked. Critical metric: false_safe=0.",
+  "truth_set": [
+    "SUPPORTED",
+    "UNSUPPORTED",
+    "DRILLING",
+    "NOT VERIFIED",
+    "DANGER"
+  ],
   "sequences": [
-    {"name": "seq1", "clip": "eval/seq1.mp4", "bag": "_2026-06-11-12-00-36_5.bag",  "start_sec": 5,  "truth": "UNSUPPORTED", "note": "bare face, survey marks, muck pile, parked boom"},
-    {"name": "seq2", "clip": "eval/seq2.mp4", "bag": "_2026-06-11-12-02-36_7.bag",  "start_sec": 8,  "truth": "UNSUPPORTED", "note": "bare face, boom angled across, no mesh/bolts"},
-    {"name": "seq3", "clip": "eval/seq3.mp4", "bag": "_2026-06-11-12-04-36_9.bag",  "start_sec": 5,  "truth": "UNSUPPORTED", "note": "bare face, boom in foreground, no support"},
-    {"name": "seq4", "clip": "eval/seq4.mp4", "bag": "_2026-06-11-12-06-36_11.bag", "start_sec": 8,  "truth": "UNSUPPORTED", "note": "bare face, survey lines, muck, no support"},
-    {"name": "seq5", "clip": "eval/seq5.mp4", "bag": "_2026-06-11-12-08-36_13.bag", "start_sec": 5,  "truth": "UNSUPPORTED", "note": "bare face, parked boom, no support"}
+    {
+      "name": "drill_b0",
+      "clip": "eval/drill_b0.mp4",
+      "bag": "_2026-06-11-11-55-36_0.bag",
+      "start_sec": 30,
+      "truth": "UNSUPPORTED"
+    },
+    {
+      "name": "drill_b3",
+      "clip": "eval/drill_b3.mp4",
+      "bag": "_2026-06-11-11-58-36_3.bag",
+      "start_sec": 30,
+      "truth": "UNSUPPORTED"
+    },
+    {
+      "name": "drill_b40",
+      "clip": "eval/drill_b40.mp4",
+      "bag": "_2026-06-11-12-35-36_40.bag",
+      "start_sec": 15,
+      "truth": "UNSUPPORTED"
+    },
+    {
+      "name": "drill_b50",
+      "clip": "eval/drill_b50.mp4",
+      "bag": "_2026-06-11-12-45-36_50.bag",
+      "start_sec": 15,
+      "truth": "UNSUPPORTED"
+    },
+    {
+      "name": "sup_b54",
+      "clip": "eval/sup_b54.mp4",
+      "bag": "_2026-06-11-12-49-36_54.bag",
+      "start_sec": 20,
+      "truth": "SUPPORTED"
+    },
+    {
+      "name": "sup_b55",
+      "clip": "eval/sup_b55.mp4",
+      "bag": "_2026-06-11-12-50-36_55.bag",
+      "start_sec": 30,
+      "truth": "SUPPORTED"
+    },
+    {
+      "name": "sup_b56",
+      "clip": "eval/sup_b56.mp4",
+      "bag": "_2026-06-11-12-51-36_56.bag",
+      "start_sec": 3,
+      "truth": "SUPPORTED"
+    }
   ]
 }

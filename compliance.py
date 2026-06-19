@@ -1,16 +1,14 @@
-"""Fail-safe compliance/safety state machine for the face-support demo.
+"""Fail-safe compliance/safety state machine (face-focused).
 
-SAFETY-CRITICAL: a small VLM hallucinates ground support that is not there, so
-this layer NEVER trusts a single frame and NEVER treats absence of evidence as
-safety. It consumes conservative PERCEPTION dicts from vlm_client and aggregates
-them with a SAFETY BIAS:
+Consumes PERCEPTION dicts {face_screened, drill_active, arms_parked,
+person_in_danger, scene, note} from vlm_client and aggregates them with a SAFETY
+BIAS over a rolling window:
 
-  * every item defaults to NOT_VERIFIED (not "ok", not "satisfied"),
-  * an item becomes VERIFIED only on positive, SUSTAINED, conjunctive evidence,
-  * any recent UNSUPPORTED reading drags the overall verdict down,
-  * SUPPORTED requires a clean streak of `support_window` agreeing windows,
-  * active hazards (a person under unsupported rock, or drilling an unsupported
-    face) raise DANGER immediately.
+  * the compliant SUPPORTED state (face screened + booms parked + no active
+    drilling) must hold UNANIMOUSLY across the whole window before it is reported,
+  * active drilling or an unscreened face immediately blocks SUPPORTED,
+  * a person under unsupported ground raises DANGER,
+  * everything defaults to NOT_VERIFIED.
 
 No I/O except load_regulation().
 """
@@ -21,13 +19,14 @@ from pathlib import Path
 import yaml
 
 # Per-item states
-NOT_VERIFIED = "not_verified"   # default — we cannot confirm this; treat as unsafe
-VERIFIED = "verified"           # positive sustained evidence
-VIOLATION = "violation"         # active hazard / clear non-compliance
+NOT_VERIFIED = "not_verified"
+VERIFIED = "verified"
+VIOLATION = "violation"
 
-# Overall verdicts (worst-case biased)
+# Overall verdicts (worst-case biased; SUPPORTED is the only "safe/compliant" one)
 DANGER = "DANGER"
 UNSUPPORTED = "UNSUPPORTED"
+DRILLING = "DRILLING"
 NOT_VERIFIED_VERDICT = "NOT VERIFIED"
 SUPPORTED = "SUPPORTED"
 
@@ -43,38 +42,28 @@ def load_regulation(path) -> list[ChecklistItem]:
     return [ChecklistItem(it["id"], it.get("label", it["id"])) for it in data["items"]]
 
 
-def _is_supported(p: dict) -> bool:
-    """A window counts as 'supported' only with the full conjunction."""
-    return (bool(p.get("mesh_visible")) and bool(p.get("bolts_visible"))
-            and p.get("ground_support_state") == "full"
-            and p.get("safety_call") == "SUPPORTED")
-
-
-def _is_unsupported(p: dict) -> bool:
-    # Anything short of clearly-full support is treated as unsupported (unsafe).
-    return (p.get("safety_call") in ("UNSUPPORTED", "PARTIAL")
-            or p.get("ground_support_state") in ("none_visible", "partial"))
+def _window_state(p: dict) -> str:
+    """Classify a single perception window. Priority: danger > drilling >
+    supported > unsupported > uncertain."""
+    if p.get("person_in_danger"):
+        return "danger"
+    if p.get("drill_active"):
+        return "drilling"
+    if p.get("face_screened") and p.get("arms_parked"):
+        return "supported"
+    if not p.get("face_screened"):
+        return "unsupported"
+    return "uncertain"
 
 
 class SafetyTracker:
-    """Aggregates perception windows into a fail-safe checklist + verdict.
-
-    support_window: number of recent windows considered. SUPPORTED / a VERIFIED
-                    support item requires ALL of the last `support_window`
-                    windows to agree; any UNSUPPORTED in the buffer wins.
-    """
-
-    # The fixed set of items this tracker reasons about (perception-grounded).
-    ITEM_IDS = ("bolts", "mesh", "support", "drill_safe", "worker_safe")
+    ITEM_IDS = ("face_screen", "no_active_drilling", "arms_parked", "worker_safe")
 
     def __init__(self, items=None, support_window: int = 3, hazard_confirm: int = 2):
         self.support_window = max(1, support_window)
-        # a hazard must be seen in this many windows of the buffer before it fires,
-        # so a single hallucinated drilling/person frame cannot raise DANGER.
         self.hazard_confirm = max(1, hazard_confirm)
         self.items = items or [ChecklistItem(i, i) for i in self.ITEM_IDS]
         self._buf: deque[dict] = deque(maxlen=self.support_window)
-        self._last_hazard_note = ""
         self._last_scene = ""
         self._last_note = ""
 
@@ -83,73 +72,58 @@ class SafetyTracker:
         self._buf.append(p)
         self._last_scene = p.get("scene", "") or self._last_scene
         self._last_note = p.get("note", "")
-        haz, note = self._hazard()
-        self._last_hazard_note = note if haz else ""
 
-    # --- internal aggregation over the rolling buffer ---
+    # --- aggregation over the rolling buffer ---
     def _full(self) -> bool:
         return len(self._buf) >= self.support_window
 
     def _all(self, pred) -> bool:
         return self._full() and all(pred(p) for p in self._buf)
 
-    def _any(self, pred) -> bool:
-        return any(pred(p) for p in self._buf)
+    def _count(self, pred) -> int:
+        return sum(1 for p in self._buf if pred(p))
 
-    def _hazard_counts(self) -> tuple[int, int]:
-        """Count windows in the buffer showing a person-in-danger / drilling hazard."""
-        person_n = drill_n = 0
-        for p in self._buf:
-            if p.get("person_in_danger"):
-                person_n += 1
-            elif p.get("activity") == "drilling" and not _is_supported(p):
-                drill_n += 1
-        return person_n, drill_n
-
-    def _hazard(self) -> tuple[bool, str]:
-        person_n, drill_n = self._hazard_counts()
-        if person_n >= self.hazard_confirm:
-            return True, "person under unsupported ground"
-        if drill_n >= self.hazard_confirm:
-            return True, "drilling on an unsupported face"
-        return False, ""
-
-    def snapshot(self) -> dict[str, str]:
-        """Per-item state. Defaults NOT_VERIFIED; only sustained positive
-        conjunctive evidence yields VERIFIED; hazards yield VIOLATION."""
-        bolts_ok = self._all(lambda p: bool(p.get("bolts_visible")))
-        mesh_ok = self._all(lambda p: bool(p.get("mesh_visible")) and bool(p.get("bolts_visible")))
-        support_ok = self._all(_is_supported)
-
-        snap = {iid: NOT_VERIFIED for iid in self.ITEM_IDS}
-        if bolts_ok:
-            snap["bolts"] = VERIFIED
-        if mesh_ok:
-            snap["mesh"] = VERIFIED
-        if support_ok:
-            snap["support"] = VERIFIED
-
-        # Safety items: VIOLATION on a CONFIRMED hazard; otherwise NOT_VERIFIED
-        # (never auto-ok — we do not certify the absence of a hazard).
-        person_n, drill_n = self._hazard_counts()
-        if person_n >= self.hazard_confirm:
-            snap["worker_safe"] = VIOLATION
-        if drill_n >= self.hazard_confirm:
-            snap["drill_safe"] = VIOLATION
-        return snap
+    def _states(self) -> list[str]:
+        return [_window_state(p) for p in self._buf]
 
     def verdict(self) -> str:
-        haz, _ = self._hazard()
-        if haz:
+        states = self._states()
+        person_n = self._count(lambda p: p.get("person_in_danger"))
+        drill_n = self._count(lambda p: p.get("drill_active"))
+        if person_n >= self.hazard_confirm:
             return DANGER
-        if self._any(_is_unsupported):
+        if "unsupported" in states:
             return UNSUPPORTED
-        if self._all(_is_supported):
+        if drill_n >= self.hazard_confirm:
+            return DRILLING
+        if self._full() and all(s == "supported" for s in states):
             return SUPPORTED
         return NOT_VERIFIED_VERDICT
 
+    def snapshot(self) -> dict[str, str]:
+        person_n = self._count(lambda p: p.get("person_in_danger"))
+        drill_n = self._count(lambda p: p.get("drill_active"))
+        snap = {iid: NOT_VERIFIED for iid in self.ITEM_IDS}
+        if self._all(lambda p: p.get("face_screened")):
+            snap["face_screen"] = VERIFIED
+        if self._all(lambda p: p.get("arms_parked")):
+            snap["arms_parked"] = VERIFIED
+        if drill_n >= self.hazard_confirm:
+            snap["no_active_drilling"] = VIOLATION
+        elif self._full() and drill_n == 0:
+            snap["no_active_drilling"] = VERIFIED
+        if person_n >= self.hazard_confirm:
+            snap["worker_safe"] = VIOLATION
+        return snap
+
     def hazard_note(self) -> str:
-        return self._last_hazard_note
+        person_n = self._count(lambda p: p.get("person_in_danger"))
+        drill_n = self._count(lambda p: p.get("drill_active"))
+        if person_n >= self.hazard_confirm:
+            return "person under unsupported ground"
+        if drill_n >= self.hazard_confirm:
+            return "active drilling at the face"
+        return ""
 
     def scene(self) -> str:
         return self._last_scene

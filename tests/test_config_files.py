@@ -22,7 +22,7 @@ def test_regulation_items_well_formed():
     items = reg["items"]
     ids = [it["id"] for it in items]
     assert len(ids) == len(set(ids)), "duplicate item ids"
-    # perception-grounded fail-safe checklist
-    assert {"bolts", "mesh", "support", "drill_safe", "worker_safe"}.issubset(set(ids))
+    # face-focused fail-safe checklist
+    assert {"face_screen", "no_active_drilling", "arms_parked", "worker_safe"}.issubset(set(ids))
     for it in items:
         assert it["id"] and it["label"]

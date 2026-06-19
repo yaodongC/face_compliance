@@ -1,15 +1,12 @@
-# Perception-grounded, fail-safe checklist. Every item defaults to NOT_VERIFIED
-# (we never assume safety). An item turns VERIFIED only on sustained, conjunctive
-# visual evidence; the safety items turn VIOLATION on an observed hazard.
-# Order = display order in the GUI.
+# Face-focused, fail-safe checklist. Every item defaults to NOT_VERIFIED. The
+# compliant SUPPORTED state requires the face screened, the booms parked, and no
+# active drilling, sustained over the window. Order = display order in the GUI.
 items:
-  - id: bolts
-    label: "Rock bolts installed (steel plates in a pattern)"
-  - id: mesh
-    label: "Wire mesh / screen on the face"
-  - id: support
-    label: "Face fully supported (mesh + bolts) before drilling"
-  - id: drill_safe
-    label: "No drilling on an unsupported face"
+  - id: face_screen
+    label: "End face screened + bolted (mesh + plates on the face)"
+  - id: no_active_drilling
+    label: "No active drilling at the face"
+  - id: arms_parked
+    label: "Drill booms parked clear of the face"
   - id: worker_safe
     label: "No worker under unsupported ground"

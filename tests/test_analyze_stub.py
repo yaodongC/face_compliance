@@ -31,17 +31,17 @@ def test_stub_analysis_runs_full_safety_lifecycle(tmp_path):
 
     verdicts = [s["verdict"] for s in result["steps"]]
     # the scripted stub must exercise the unsafe states AND eventually reach SUPPORTED
-    assert "UNSUPPORTED" in verdicts
     assert "DANGER" in verdicts
+    assert "DRILLING" in verdicts or "UNSUPPORTED" in verdicts
     assert verdicts[-1] == "SUPPORTED"
 
-    # file written with the perception-based schema
+    # file written with the face-focused schema
     on_disk = json.loads(Path(cfg["paths"]["analysis"]).read_text())
     assert on_disk["meta"]["model"] == cfg["model"]
     for s in result["steps"]:
-        assert {"t_sec", "scene", "activity", "perception",
+        assert {"t_sec", "scene", "perception",
                 "checklist_snapshot", "verdict", "hazard_note"} <= set(s)
 
-    # final snapshot: support/mesh/bolts verified once sustained
+    # final snapshot: the compliant end-state has the face-screen verified
     last = result["steps"][-1]["checklist_snapshot"]
-    assert last["support"] == "verified"
+    assert last["face_screen"] == "verified"

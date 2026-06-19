@@ -20,13 +20,14 @@ ICON = {"not_verified": "❓", "verified": "✅", "violation": "⛔"}
 ROW_COLOR = {"not_verified": "#777", "verified": "#1e8449", "violation": "#c0392b"}
 
 # Verdict banner colours. Only SUPPORTED is green; everything else is a warning.
-BANNER = {"DANGER": "#7b1113", "UNSUPPORTED": "#c0392b",
+BANNER = {"DANGER": "#7b1113", "UNSUPPORTED": "#c0392b", "DRILLING": "#cc6600",
           "NOT VERIFIED": "#b8860b", "SUPPORTED": "#1e8449"}
 SUBTITLE = {
-    "DANGER": "Hazard observed — clear the area",
-    "UNSUPPORTED": "No ground support verified — treat face as UNSUPPORTED",
-    "NOT VERIFIED": "Support not confirmed — human inspection required",
-    "SUPPORTED": "Mesh + bolts verified over time (assistive only — still verify)",
+    "DANGER": "Person under unsupported ground — clear the area",
+    "UNSUPPORTED": "End face not screened — treat as UNSUPPORTED",
+    "DRILLING": "Active face drilling — work in progress, not the supported state",
+    "NOT VERIFIED": "Face support not confirmed — human inspection required",
+    "SUPPORTED": "Face screened + booms parked, drilling done (assistive only — still verify)",
 }
 DISCLAIMER = ("⚠ ASSISTIVE DEMO — NOT A CERTIFIED SAFETY SYSTEM. A small vision model "
               "can miss or hallucinate ground support. Never enter a face or skip a "
@@ -120,9 +121,16 @@ class Player(QtWidgets.QWidget):
         if not step:
             return
         scene = step.get("scene", "")
-        act = step.get("activity", "none")
+        p = step.get("perception", {})
+        flags = []
+        if p.get("drill_active"):
+            flags.append("drilling")
+        if p.get("arms_parked"):
+            flags.append("booms parked")
+        if p.get("face_screened"):
+            flags.append("face screened")
+        txt = scene + (f"\n[{', '.join(flags)}]" if flags else "")
         hazard = step.get("hazard_note", "")
-        txt = f"Activity: {act}\n{scene}"
         if hazard:
             txt += f"\n⛔ {hazard}"
         self.scene_lbl.setText(txt)

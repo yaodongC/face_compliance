@@ -10,7 +10,11 @@ camera_topic: "/sensing/front/rgb/image_raw/compressed"
 sampling_sec: 5.0       # run the VLM every N seconds of footage
 window_frames: 1        # frames per analysis window. 1 = single still: small VLMs
                         # hallucinate MORE with multi-frame context, so default to 1.
-frame_max_width: 768    # downscale frames before sending to the VLM
+frame_max_width: 1200   # width sent to the VLM. Mesh/bolts/drill state are fine
+                        # detail; too low hides them, full-frame confuses the model.
+# Crop to the END-FACE/centre region [x0,y0,x1,y1] (fractions) before sending, so
+# the model judges the FACE + drill state, not the always-meshed arched back.
+face_crop: [0.22, 0.20, 0.78, 0.92]
 
 # Generation (temperature 0 for deterministic single-pass perception)
 max_tokens: 420
