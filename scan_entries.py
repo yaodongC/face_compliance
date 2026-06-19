@@ -85,23 +85,43 @@ def entries_from_signal(sig, present_th=PRESENT_TH, motion_th=MOTION_TH, merge_g
     return out
 
 
-def reconcile(entries, operator_path, window=35.0):
-    """Entry TIMES come from the dense classical scan (complete). For WHETHER the
-    boom was moving, prefer the VLM scan's verdict (computed from dense bag frames,
-    far more reliable than 2 s-apart timelapse motion) when an operator session lies
-    within `window` s; otherwise keep the classical estimate (flagged approximate)."""
+def _classify(motion, thresh):
+    return "NON_COMPLIANT_ENTRY" if motion > thresh else "SAFE_RELOAD"
+
+
+def reconcile(entries, operator_path, thresh, window=35.0):
+    """Produce the UNION of the dense classical entries and the VLM operator
+    sessions (each scan misses some), and classify every entry by `thresh`. For the
+    boom-motion VALUE prefer the VLM's bag-level `entry_motion` (reliable) when a
+    session is within `window` s; else use the classical timelapse motion."""
     if not Path(operator_path).exists():
+        for e in entries:
+            e["entry_motion"] = e["boom_motion"]
+            e["source"] = "classical"
+            e["verdict"] = _classify(e["boom_motion"], thresh)
         return entries
     from operator_safety import classify_sessions
     sessions = classify_sessions(json.loads(Path(operator_path).read_text())["events"])
+    used = set()
     for e in entries:
-        near = [s for s in sessions if abs(s["start"] - e["time"]) <= window]
+        near = [(i, s) for i, s in enumerate(sessions) if abs(s["start"] - e["time"]) <= window]
         if near:
-            s = min(near, key=lambda s: abs(s["start"] - e["time"]))
-            e["verdict"] = s["verdict"]
+            i, s = min(near, key=lambda x: abs(x[1]["start"] - e["time"]))
+            used.add(i)
+            e["entry_motion"] = round(s["entry_motion"], 3)
             e["source"] = "vlm"
         else:
-            e["source"] = "classical"   # classification approximate
+            e["entry_motion"] = e["boom_motion"]
+            e["source"] = "classical"
+        e["verdict"] = _classify(e["entry_motion"], thresh)
+    # add VLM sessions no classical entry covered (the orange scan missed them)
+    for i, s in enumerate(sessions):
+        if i not in used:
+            m = round(s["entry_motion"], 3)
+            entries.append({"time": round(s["start"], 1), "end": round(s["end"], 1),
+                            "boom_motion": m, "entry_motion": m, "source": "vlm",
+                            "verdict": _classify(m, thresh)})
+    entries.sort(key=lambda e: e["time"])
     return entries
 
 
@@ -111,16 +131,22 @@ def main():
     ap.add_argument("--index", default="data/full_cycle.idx")
     ap.add_argument("--operator", default="data/operator_events.json")
     ap.add_argument("--out", default="data/operator_entries.json")
+    ap.add_argument("--config", default="config.yaml")
     a = ap.parse_args()
+    import yaml
+    cfg = yaml.safe_load(Path(a.config).read_text()) if Path(a.config).exists() else {}
+    thresh = float(cfg.get("boom_motion_thresh", 0.035))
     sig = scan(a.video, a.index)
-    entries = reconcile(entries_from_signal(sig), a.operator)
+    entries = reconcile(entries_from_signal(sig), a.operator, thresh)
     nviol = sum(1 for e in entries if e["verdict"] == "NON_COMPLIANT_ENTRY")
+    print(f"(boom-moving threshold = {thresh})")
     Path(a.out).write_text(json.dumps({"entries": entries}, indent=2))
     print(f"=== {len(entries)} danger-zone entries ({nviol} entered while boom moving) -> {a.out} ===")
     for e in entries:
         ts = int(e["time"])
         tag = "DANGER " if e["verdict"] == "NON_COMPLIANT_ENTRY" else "reload "
-        print(f"  {ts//60:02d}:{ts%60:02d}  {tag} boom_motion={e['boom_motion']}")
+        print(f"  {ts//60:02d}:{ts%60:02d}  {tag} motion={e.get('entry_motion', e['boom_motion'])}"
+              f"  ({e.get('source', '')})")
     return 0
 
 

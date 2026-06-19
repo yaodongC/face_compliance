@@ -26,7 +26,11 @@ import requests
 # danger-zone ROI as fractions [y0,y1,x0,x1] -- lower centre (booms + operator)
 DANGER_ROI = (0.45, 1.0, 0.20, 0.80)
 MOTION_PX_THRESH = 25      # per-pixel abs-diff threshold
-MOTION_FRAC_THRESH = 0.02  # fraction of (un-masked) ROI pixels changed => moving
+# Fraction of danger-zone pixels that must change for the boom to count as MOVING.
+# Set in the natural gap of the data (boom motions cluster <=0.023 stopped vs
+# >=0.046 moving), so a barely-twitching boom is not flagged. Override per-run with
+# `boom_motion_thresh` in config.yaml.
+MOTION_FRAC_THRESH = 0.035
 
 PERSON_PROMPT = (
     'Underground mine, camera on a drill jumbo facing the rock face. Find the '

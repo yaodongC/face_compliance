@@ -15,6 +15,10 @@ votes: 1
 vote_temperature: 0.6
 support_window: 3
 hazard_confirm: 2
+# fraction of danger-zone pixels that must change for the boom to count as MOVING
+# (an operator entering while the boom moves => non-compliant). Raise to be less
+# sensitive. Data clusters: <=0.023 stopped, >=0.046 moving; 0.035 sits in the gap.
+boom_motion_thresh: 0.035
 paths:
   regulation: regulation.yaml
   video: data/demo.mp4
