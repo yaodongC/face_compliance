@@ -1,0 +1,78 @@
+{
+  "note": "GT hand-labelled at high-res from full_cycle.mp4. Active boom work (drilling/bolting, not parked) = not_supported; booms parked to sides + face fully bolted = supported. Park transition ~3275s.",
+  "park_transition_sec": 3275,
+  "points": [
+    {
+      "cycle_sec": 0,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 250,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 500,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 750,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 1000,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 1250,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 1500,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 1750,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 2000,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 2250,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 2500,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 2750,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 3000,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 3250,
+      "truth": "not_supported"
+    },
+    {
+      "cycle_sec": 3300,
+      "truth": "supported"
+    },
+    {
+      "cycle_sec": 3330,
+      "truth": "supported"
+    },
+    {
+      "cycle_sec": 3360,
+      "truth": "supported"
+    },
+    {
+      "cycle_sec": 3374,
+      "truth": "supported"
+    }
+  ]
+}

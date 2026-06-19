@@ -1,0 +1,155 @@
+"""Render 'what the GUI shows' to an MP4 (headless, no Qt).
+
+Composites each video frame with the verdict banner, the fail-safe checklist, and
+the scene text from a cached analysis.json -- i.e. a screen-recording of the GUI,
+produced directly. Works on the full-cycle time-lapse to give a GUI time-lapse of
+the whole development cycle.
+
+Usage:
+  python3 render_gui.py --video data/full_cycle.mp4 --analysis data/full_cycle_analysis.json \
+      --out data/full_cycle_gui.mp4 [--index data/full_cycle.idx] [--fps 15]
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import cv2
+import numpy as np
+import yaml
+
+# BGR colours
+BANNER = {"DANGER": (40, 20, 120), "UNSUPPORTED": (44, 44, 192),
+          "DRILLING": (0, 102, 204), "NOT VERIFIED": (30, 150, 200),
+          "SUPPORTED": (60, 160, 60)}
+SUBTITLE = {
+    "DANGER": "Person under unsupported ground - clear the area",
+    "UNSUPPORTED": "End face not screened - treat as UNSUPPORTED",
+    "DRILLING": "Active face drilling - work in progress, not the supported state",
+    "NOT VERIFIED": "Face support not confirmed - human inspection required",
+    "SUPPORTED": "Face screened + booms parked, drilling done (assistive - still verify)",
+}
+ITEM_COLOR = {"verified": (70, 160, 70), "violation": (44, 44, 192), "not_verified": (130, 130, 130)}
+ITEM_MARK = {"verified": "[x]", "violation": "[!]", "not_verified": "[ ]"}
+
+
+def _load_index(path):
+    if not path or not Path(path).exists():
+        return None
+    rows = [l.split(",") for l in Path(path).read_text().splitlines()[1:]]
+    return {int(f): float(c) for f, c in rows}
+
+
+def _wrap(text, width):
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        if len(cur) + len(w) + 1 <= width:
+            cur = (cur + " " + w).strip()
+        else:
+            lines.append(cur); cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def render(video, analysis, out, index_path=None, fps=15.0):
+    data = json.loads(Path(analysis).read_text())
+    steps = sorted(data["steps"], key=lambda s: s["t_sec"])
+    items = data["meta"]["items"]
+    index = _load_index(index_path)
+    cap = cv2.VideoCapture(video)
+    vfps = cap.get(cv2.CAP_PROP_FPS) or fps
+
+    W, H = 1320, 640
+    vid_w, vid_h = 860, 484
+    panel_x = vid_w + 20
+    writer = cv2.VideoWriter(out, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
+
+    def cur_step(t):
+        c = steps[0]
+        for s in steps:
+            if s["t_sec"] <= t:
+                c = s
+            else:
+                break
+        return c
+
+    fno = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        t = fno / vfps
+        step = cur_step(t)
+        v = step["verdict"]
+        canvas = np.full((H, W, 3), 30, dtype=np.uint8)
+
+        # banner
+        col = BANNER.get(v, (90, 90, 90))
+        cv2.rectangle(canvas, (0, 0), (W, 56), col, -1)
+        cv2.putText(canvas, v, (16, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3, cv2.LINE_AA)
+        cv2.putText(canvas, SUBTITLE.get(v, ""), (16, 78), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (210, 210, 210), 1, cv2.LINE_AA)
+
+        # video
+        fr = cv2.resize(frame, (vid_w, vid_h))
+        canvas[92:92 + vid_h, 10:10 + vid_w] = fr
+
+        # cycle clock
+        if index is not None:
+            csec = index.get(fno, t)
+            cv2.putText(canvas, f"cycle {int(csec)//60:02d}:{int(csec)%60:02d}", (16, 92 + vid_h + 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 60), 2, cv2.LINE_AA)
+
+        # checklist panel
+        cv2.putText(canvas, "Face-support checklist", (panel_x, 110),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (235, 235, 235), 2, cv2.LINE_AA)
+        snap = step["checklist_snapshot"]
+        y = 150
+        for it in items:
+            st = snap.get(it["id"], "not_verified")
+            c = ITEM_COLOR.get(st, (130, 130, 130))
+            cv2.putText(canvas, ITEM_MARK.get(st, "[ ]"), (panel_x, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2, cv2.LINE_AA)
+            for i, ln in enumerate(_wrap(it["label"], 30)):
+                cv2.putText(canvas, ln, (panel_x + 44, y + i * 22), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5, c, 1, cv2.LINE_AA)
+            y += 26 + 22 * max(1, len(_wrap(it["label"], 30)))
+
+        # scene text
+        y += 8
+        cv2.putText(canvas, "What the camera sees:", (panel_x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+        y += 24
+        for ln in _wrap(step.get("scene", ""), 34)[:5]:
+            cv2.putText(canvas, ln, (panel_x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (180, 200, 220), 1, cv2.LINE_AA)
+            y += 20
+
+        # disclaimer footer
+        cv2.putText(canvas, "ASSISTIVE DEMO - NOT A CERTIFIED SAFETY SYSTEM. Always physically verify.",
+                    (12, H - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (60, 200, 255), 1, cv2.LINE_AA)
+        writer.write(canvas)
+        fno += 1
+    cap.release()
+    writer.release()
+    print(f"wrote {out} ({fno} frames)")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config")
+    ap.add_argument("--video")
+    ap.add_argument("--analysis")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--index")
+    ap.add_argument("--fps", type=float, default=15.0)
+    a = ap.parse_args()
+    video, analysis = a.video, a.analysis
+    if a.config:
+        cfg = yaml.safe_load(Path(a.config).read_text())
+        video = video or cfg["paths"]["video"]
+        analysis = analysis or cfg["paths"]["analysis"]
+    render(video, analysis, a.out, a.index, a.fps)
+
+
+if __name__ == "__main__":
+    main()
