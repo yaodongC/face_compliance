@@ -19,6 +19,7 @@ import json
 import cv2
 import numpy as np
 import requests
+from prompt_config import PROMPTS
 
 # Conservative defaults: never assume the face is supported.
 SAFE_DEFAULT = {
@@ -30,23 +31,8 @@ SAFE_DEFAULT = {
     "note": "",
 }
 
-SYSTEM_PROMPT = """You are a SAFETY INSPECTOR watching the front camera of a drill jumbo in an underground hard-rock mine heading. Miners can be crushed by unsupported ground; reporting support that is not there gets people killed, so when unsure report the UNSAFE answer.
-
-IMPORTANT: the arched BACK and side walls are ALWAYS covered with wire mesh and bolts in this mine — IGNORE them. Judge ONLY the FLAT END FACE straight ahead (the far wall the heading is being advanced into, where the drill booms point) and the drill booms themselves.
-
-Definitions:
-- face_screened = the END FACE itself is covered with a wire-mesh screen AND has rock-bolt plates (round/square steel plates ~15 cm). If the end face shows bare/exposed rock, or you cannot clearly see screen+plates ON the end face, face_screened = false.
-- drill_active = a drill boom has steel rods pushed into the face (drilling in progress). A boom merely near the face is not enough; rods must be engaging the rock.
-- arms_parked = the drill booms are folded/pulled back to the sides (or down), clearly NOT working the face.
-- person_in_danger = a person is standing/working directly under bare or unsupported rock.
-
-Rules:
-1. Report ONLY what is clearly visible. Do not assume or imagine.
-2. If you cannot clearly confirm the END FACE is screened+bolted, face_screened = false.
-3. If a drill is engaging the face, drill_active = true (this is active work, not the supported rest-state).
-
-Respond with ONLY this JSON object, no prose:
-{"scene":"<one sentence: what is visible at the end face>","face_screened":true|false,"drill_active":true|false,"arms_parked":true|false,"person_in_danger":true|false,"note":"<short caveat>"}"""
+# externalized to prompts/face_support.yaml (config, not code)
+SYSTEM_PROMPT = PROMPTS["system"]
 
 
 def build_system_prompt(items=None) -> str:

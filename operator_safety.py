@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 import requests
 from harness_config import PARAMS
+from prompt_config import PROMPTS
 
 _OP = PARAMS["operator"]   # single source of truth (config.yaml params.operator)
 # danger-zone ROI as fractions [y0,y1,x0,x1] -- lower centre (booms + operator)
@@ -34,14 +35,8 @@ MOTION_FRAC_THRESH = _OP["boom_motion_thresh"]
 _ORANGE_LO = tuple(_OP["orange_hsv_lo"])
 _ORANGE_HI = tuple(_OP["orange_hsv_hi"])
 
-PERSON_PROMPT = (
-    'Underground mine, camera on a drill jumbo facing the rock face. Find the '
-    'WORKER on foot in front of the jumbo (hi-vis). Return JSON only: '
-    '{"person_in_front":bool,"hi_vis":bool,'
-    '"person_bbox":[x0,y0,x1,y1] as fractions 0-1 of the image (or null),'
-    '"action":"<if a worker is in front, what are they doing? e.g. loading a '
-    'screen/mesh onto a boom, fitting a friction bolt, reaching up to the face, '
-    'walking, standing - else empty>","note":"<short>"}')
+# externalized to prompts/face_support.yaml (config, not code)
+PERSON_PROMPT = PROMPTS["person"]
 
 
 def _roi_gray(img):
@@ -181,10 +176,7 @@ def detect_screen(img, cfg, *, session=None):
     c = cv2.resize(img, (_SCREEN_SEND_W, rh))
     ok, buf = cv2.imencode(".jpg", c, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
     b64 = base64.b64encode(buf.tobytes()).decode()
-    prompt = (f"Underground mine face, image is {_SCREEN_SEND_W}x{rh} px. A worker/boom is "
-              "installing a WIRE-MESH SCREEN panel on the rock face. Give the pixel bounding box "
-              "of the screen panel being installed/handled right now. JSON only: "
-              '{"screen_visible":bool,"screen_bbox_px":[x0,y0,x1,y1]}')
+    prompt = PROMPTS["screen"].replace("<W>", str(_SCREEN_SEND_W)).replace("<H>", str(rh))
     msgs = [{"role": "user", "content": [
         {"type": "text", "text": prompt},
         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]
