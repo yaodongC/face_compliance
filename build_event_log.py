@@ -44,44 +44,27 @@ def main():
     lg = EL.EventLogger(a.out, reset=True)
     cyc = _cycle_mapper(a.index)
 
-    # 1) verdict-state timeline -> state_change + face_supported milestones
-    if Path(a.analysis).exists():
-        steps = sorted(json.loads(Path(a.analysis).read_text())["steps"], key=lambda s: s["t_sec"])
-        prev = None
-        for s in steps:
-            v = s["verdict"]
-            if v != prev:
-                cs = cyc(s["t_sec"])
-                lg.log(EL.STATE_CHANGE, cs, severity=VERDICT_SEV.get(v, EL.INFO),
-                       description=f"verdict -> {v}", source="face_harness", verdict=v)
-                if v == "SUPPORTED":
-                    lg.log(EL.FACE_SUPPORTED, cs, severity=EL.INFO,
-                           description="face screened + booms parked (supported state)",
-                           source="face_harness")
-                prev = v
-
-    # 2) operator RELOAD SESSIONS: the operator must enter the zone to reload - that
-    #    is normal. Non-compliant ONLY if the boom was still operating at ENTRY.
-    if Path(a.operator).exists():
-        from operator_safety import classify_sessions
-        ops = json.loads(Path(a.operator).read_text())["events"]
-        for s in classify_sessions(ops):
-            ev = f"data/operator_frames/op_{int(s['start']):05d}.png"
-            if s["verdict"] == "NON_COMPLIANT_ENTRY":
-                lg.log(EL.OPERATOR_IN_ZONE, s["end"], severity=EL.VIOLATION,
-                       description=f"operator ENTERED danger zone while boom STILL OPERATING "
-                                   f"(entry motion {s['entry_motion']:.3f}): {s['action']}",
-                       bbox=s["person_bbox"], evidence=ev, source="operator_safety",
-                       started_at=s["start"], duration_sec=round(s["end"] - s["start"], 1))
+    # danger-zone ENTRIES (dense classical orange detection; classification
+    #    reconciled with the VLM scan). The operator must enter to reload - that is
+    #    normal; non-compliant ONLY when the boom was still moving at entry.
+    ep = Path("data/operator_entries.json")
+    if ep.exists():
+        for e in json.loads(ep.read_text())["entries"]:
+            if e["verdict"] == "NON_COMPLIANT_ENTRY":
+                lg.log(EL.OPERATOR_IN_ZONE, e.get("end", e["time"]), severity=EL.VIOLATION,
+                       description=f"operator entered danger zone while boom MOVING "
+                                   f"(motion {e['boom_motion']})", source="entries",
+                       started_at=e["time"])
             else:
-                lg.log(EL.SCREEN_INSTALLED, s["start"], severity=EL.INFO,
-                       description=f"operator reloaded with boom STOPPED (compliant entry): {s['action']}",
-                       bbox=s["person_bbox"], evidence=ev, source="operator_safety")
+                lg.log(EL.OPERATOR_IN_ZONE, e["time"], severity=EL.INFO,
+                       description="operator entered danger zone to reload — boom stopped",
+                       source="entries")
 
-        # 3) mesh-install milestones (ESTIMATE: a new mesh = a new SUSTAINED install
-        #    location; the total number of screens depends on face size and is not
-        #    assumed). Per-mesh detection from this footage is not exact.
+    # 3) mesh-install milestones (ESTIMATE: a new mesh = a new TEMPORAL install
+    #    episode; the total depends on face size and is not assumed).
+    if Path(a.operator).exists():
         from coverage import mesh_installs
+        ops = json.loads(Path(a.operator).read_text())["events"]
         for k, ins in enumerate(mesh_installs(ops)):
             lg.log(EL.SCREEN_INSTALLED, ins["time"], severity=EL.INFO,
                    description=f"mesh #{k+1} installed (estimate)", source="coverage",

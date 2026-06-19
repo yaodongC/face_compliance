@@ -119,14 +119,23 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
     steps = sorted(data["steps"], key=lambda s: s["t_sec"])
     index = _load_index(index_path)
     events = _load_events(events_path)
-    dwins = _danger_windows(events)
     ops = []
     if operator_path and Path(operator_path).exists():
         ops = json.loads(Path(operator_path).read_text()).get("events", [])
     installs = mesh_installs(ops)
+    # dense classical danger-zone entries (catches the brief bolt-reload visits the
+    # VLM scan missed); danger state holds for the whole presence interval
+    entries = []
+    ef = Path("data/operator_entries.json")
+    if ef.exists():
+        entries = json.loads(ef.read_text()).get("entries", [])
+    dwins = [(e["time"], e.get("end", e["time"])) for e in entries
+             if e["verdict"] == "NON_COMPLIANT_ENTRY"]
 
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or fps
+    t_end = max(list(index.values()) if index else [s["t_sec"] for s in steps] or [1.0])
+    t_end = max(t_end, 1.0)
 
     # fonts
     f_num = _font("b", 60); f_verdict = _font("b", 42); f_h1 = _font("b", 22)
@@ -139,8 +148,8 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
     vx, vy, vw, vh = M, 86, 860, 484
     rx = vx + vw + M
     rw = W - rx - M
-    safe_box = (rx, vy, rx + rw, vy + 232)
-    mesh_box = (rx, vy + 248, rx + rw, vy + 484)
+    safe_box = (rx, vy, rx + rw, vy + 176)
+    mesh_box = (rx, vy + 192, rx + rw, vy + 484)
     log_box = (M, 586, W - M, 748)
 
     writer = cv2.VideoWriter(out, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
@@ -203,36 +212,46 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         d.text((rx + 20, safe_box[1] + 44), word, font=f_verdict, fill=accent)
         reason = ("Operator in the danger zone while the boom is still moving — drilling must stop."
                   if danger else "No operator under a moving boom. Bolting cycle proceeding normally.")
-        ry = safe_box[1] + 108
-        for ln in _wrap(d, reason, f_body, rw - 44):
-            d.text((rx + 22, ry), ln, font=f_body, fill=INK if danger else MUTED)
-            ry += 24
-        # small footnote: coverage is not auto-certified
-        d.text((rx + 22, safe_box[3] - 30), "Full mesh coverage requires on-site inspection.",
+        ry = safe_box[1] + 92
+        for ln in _wrap(d, reason, f_small, rw - 44):
+            d.text((rx + 22, ry), ln, font=f_small, fill=INK if danger else MUTED)
+            ry += 19
+        d.text((rx + 22, safe_box[3] - 26), "Full mesh coverage requires on-site inspection.",
                font=f_small, fill=FAINT)
 
-        # ---- mesh-install progress card
+        # ---- mesh-install card: count + TWO shared-axis timelines (installs above,
+        #      danger-zone entries below)
         d.rounded_rectangle(mesh_box, radius=14, fill=SURFACE, outline=HAIR, width=1)
-        _tracked(d, (rx + 22, mesh_box[1] + 22), "MESH INSTALLATION", f_eye, MUTED, 2)
-        d.text((rx + 20, mesh_box[1] + 40), str(n_mesh), font=f_num, fill=AMBER)
-        numw = d.textlength(str(n_mesh), font=f_num)
-        d.text((rx + 28 + numw, mesh_box[1] + 62), "meshes", font=f_h1, fill=INK)
-        d.text((rx + 28 + numw, mesh_box[1] + 88), "installed (est.)", font=f_small, fill=MUTED)
-        # location lane: where each installed mesh sits across the face width
-        lane_y = mesh_box[1] + 150
-        lx0, lx1 = rx + 22, mesh_box[2] - 22
-        d.line([lx0, lane_y, lx1, lane_y], fill=HAIR, width=2)
-        fx0, fx1 = FACE_X
-        for k, ins in enumerate(installs):
-            if ins["time"] <= csec + 0.1:
-                fxr = min(max((ins["cx"] - fx0) / (fx1 - fx0), 0.0), 1.0)
-                mx = int(lx0 + fxr * (lx1 - lx0))
-                d.ellipse([mx - 5, lane_y - 5, mx + 5, lane_y + 5], fill=AMBER)
-                d.text((mx - 8, lane_y + 10), f"M{k+1}", font=f_small, fill=AMBER)
-        # install times, monospaced
-        times = "   ".join(f"{int(i['time'])//60:02d}:{int(i['time'])%60:02d}"
-                           for i in installs if i["time"] <= csec + 0.1) or "—"
-        d.text((rx + 22, mesh_box[3] - 30), times, font=f_mono, fill=MUTED)
+        ax0, ax1 = rx + 22, mesh_box[2] - 22
+        _tracked(d, (ax0, mesh_box[1] + 20), "MESH INSTALLATION", f_eye, MUTED, 2)
+        d.text((ax0, mesh_box[1] + 36), str(n_mesh), font=_font("b", 44), fill=AMBER)
+        numw = d.textlength(str(n_mesh), font=_font("b", 44))
+        d.text((ax0 + numw + 14, mesh_box[1] + 50), "meshes installed", font=f_body, fill=INK)
+        d.text((ax0 + numw + 14, mesh_box[1] + 72), "estimate", font=f_small, fill=MUTED)
+
+        def _track(y, label, marks, info):
+            _tracked(d, (ax0, y - 22), label, f_eye, MUTED, 1)
+            _right(d, ax1, y - 21, info, f_small, MUTED)
+            d.line([ax0, y, ax1, y], fill=HAIR, width=2)
+            for mk in marks:
+                if mk["t"] <= csec + 0.1:
+                    px = ax0 + min(mk["t"] / t_end, 1.0) * (ax1 - ax0)
+                    d.line([px, y - 7, px, y + 7], fill=mk["c"], width=2)
+                    d.ellipse([px - 3, y - 3, px + 3, y + 3], fill=mk["c"])
+                    if mk.get("lab"):
+                        d.text((px - 6, y + 9), mk["lab"], font=f_small, fill=mk["c"])
+            ph = ax0 + min(csec / t_end, 1.0) * (ax1 - ax0)
+            d.line([ph, y - 11, ph, y + 11], fill=(205, 211, 219), width=1)
+
+        ml = [{"t": i["time"], "lab": f"M{k+1}", "c": AMBER} for k, i in enumerate(installs)]
+        _track(mesh_box[1] + 142, "INSTALLS", ml, f"{n_mesh} so far")
+        el = [{"t": e["time"], "c": DANGER if e["verdict"] == "NON_COMPLIANT_ENTRY" else WARN}
+              for e in entries]
+        n_in = sum(1 for e in entries if e["time"] <= csec + 0.1)
+        n_dz = sum(1 for e in entries if e["time"] <= csec + 0.1 and e["verdict"] == "NON_COMPLIANT_ENTRY")
+        _track(mesh_box[1] + 224, "DANGER-ZONE ENTRIES", el, f"{n_in} entries · {n_dz} boom moving")
+        d.text((ax0, mesh_box[3] - 22), "00:00", font=f_mono, fill=FAINT)
+        _right(d, ax1, mesh_box[3] - 22, f"{int(t_end)//60:02d}:{int(t_end)%60:02d}", f_mono, FAINT)
 
         # ---- event-log timeline (full width)
         d.rounded_rectangle(log_box, radius=14, fill=SURFACE, outline=HAIR, width=1)
