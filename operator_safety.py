@@ -24,6 +24,8 @@ import numpy as np
 import requests
 from harness_config import PARAMS
 from prompt_config import PROMPTS
+from rule_config import RULES
+from rules_engine import decide
 
 _OP = PARAMS["operator"]   # single source of truth (config.yaml params.operator)
 # danger-zone ROI as fractions [y0,y1,x0,x1] -- lower centre (booms + operator)
@@ -226,7 +228,7 @@ def classify_sessions(events, gap=_OP["session_gap"], motion_thresh=MOTION_FRAC_
         out.append({"start": s[0]["cycle_sec"], "end": s[-1]["cycle_sec"],
                     "entry_motion": entry.get("arm_motion", 0.0),
                     "entry_boom_moving": entry_moving,
-                    "verdict": "NON_COMPLIANT_ENTRY" if entry_moving else "SAFE_RELOAD",
+                    "verdict": decide(RULES["operator_entry"], {"boom_moving_at_entry": entry_moving}),
                     "action": entry.get("action", ""), "n_frames": len(s),
                     "person_bbox": entry.get("person_bbox")})
     return out
@@ -235,10 +237,7 @@ def classify_sessions(events, gap=_OP["session_gap"], motion_thresh=MOTION_FRAC_
 def classify(person_in_front: bool, arm_motion_value: float,
              motion_thresh: float = MOTION_FRAC_THRESH) -> str:
     """Fail-safe operator-zone verdict (arm_motion_value should be the
-    person-masked motion)."""
+    person-masked motion). Verdict mapping lives in rules/face_support.yaml."""
     moving = arm_motion_value > motion_thresh
-    if person_in_front and moving:
-        return "DANGER"          # operator in front while the boom is moving
-    if person_in_front and not moving:
-        return "OK_LOADING"      # operator in front, drilling stopped (compliant)
-    return "NO_PERSON"
+    return decide(RULES["operator_live"],
+                  {"person_in_front": bool(person_in_front), "boom_moving": bool(moving)})

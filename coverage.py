@@ -18,6 +18,8 @@ import argparse
 import json
 from pathlib import Path
 from harness_config import PARAMS
+from rule_config import RULES
+from rules_engine import decide
 
 _CV = PARAMS["coverage"]   # single source of truth (config.yaml params.coverage)
 # face region of the frame that gets screened (fractions): exclude floor/edges
@@ -113,7 +115,7 @@ def width_coverage(events, t, panel_w=_CV["width_panel_w"], face_x=FACE_X,
     frac = max(0.0, min(1.0, cov / span))
     full = frac >= _CV["full_coverage_frac"]
     return {"intervals": merged, "fraction": frac, "full": full,
-            "verdict": "COMPLIANT" if full else "NOT SUPPORTED"}
+            "verdict": decide(RULES["coverage_full"], {"full": full})}
 
 
 def segment_coverage(events, n=_CV["segments"], face_x=FACE_X):
@@ -139,7 +141,7 @@ def segment_state(seg_times, t):
     n = len(seg_times) or 1
     full = all(covered)
     return {"covered": covered, "fraction": sum(covered) / n, "full": full,
-            "verdict": "COMPLIANT" if full else "NOT SUPPORTED"}
+            "verdict": decide(RULES["coverage_full"], {"full": full})}
 
 
 def coverage_state(meshes, t, face_x=FACE_X, min_overlap=_CV["min_overlap"]):
@@ -175,7 +177,7 @@ def coverage_state(meshes, t, face_x=FACE_X, min_overlap=_CV["min_overlap"]):
         if q["bbox"][0] > p["bbox"][2] - min_overlap:
             overlaps = False
             break
-    verdict = "COMPLIANT" if (full and overlaps) else "NOT SUPPORTED"
+    verdict = decide(RULES["coverage_overlap"], {"full": full, "overlaps": overlaps})
     return {"fraction": round(fraction, 3), "full": full, "overlaps": overlaps,
             "verdict": verdict, "n_panels": len(installed)}
 

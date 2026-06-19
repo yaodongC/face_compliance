@@ -1,0 +1,32 @@
+# Verdict decision tables: map computed boolean facts -> a verdict. The FIRST matching
+# rule wins; the fail-safe `default` applies when nothing matches. Feature computation
+# (boom motion, coverage union, mesh episodes) stays in certified code; only the
+# condition->verdict MAPPING is here, so the rules are editable + auditable without
+# touching the engine. Keep this to simple boolean conditions; if a rule ever needs
+# counts/derived facts, compute the fact in code and expose it as a boolean here.
+
+operator_entry:          # classify_sessions: one verdict per reload visit
+  rules:
+    - when: {boom_moving_at_entry: true}   # entered while the boom was still moving
+      verdict: NON_COMPLIANT_ENTRY
+  default: SAFE_RELOAD
+
+operator_live:           # classify(): live per-frame operator-zone state
+  rules:
+    - when: {person_in_front: true, boom_moving: true}
+      verdict: DANGER
+    - when: {person_in_front: true, boom_moving: false}
+      verdict: OK_LOADING
+  default: NO_PERSON
+
+coverage_overlap:        # coverage_state: full face covered AND panels overlap
+  rules:
+    - when: {full: true, overlaps: true}
+      verdict: COMPLIANT
+  default: NOT SUPPORTED
+
+coverage_full:           # width_coverage / segment_state: full face covered
+  rules:
+    - when: {full: true}
+      verdict: COMPLIANT
+  default: NOT SUPPORTED
