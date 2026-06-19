@@ -37,6 +37,49 @@ def _col_span(bbox, cols, reach_frac=0.6):
     return range(max(0, c0), min(cols, c1 + 1))
 
 
+def install_intervals(events, t, panel_w=0.12, face_x=FACE_X, min_hits=2, bin_w=0.02):
+    """Merged covered x-intervals of the face at time t, requiring SUSTAINED install
+    activity. A face region is 'covered' only where >= min_hits install detections
+    accumulate - so the operator drifting through a spot once (e.g. while still
+    bolting an earlier mesh) does NOT mark it covered. The NUMBER of screens is
+    emergent (depends on face size); we do not assume a fixed count."""
+    fx0, fx1 = face_x
+    nb = max(1, int(round((fx1 - fx0) / bin_w)))
+    hits = [0] * nb
+    for e in sorted([e for e in events if e.get("person_bbox")], key=lambda x: x["cycle_sec"]):
+        if e["cycle_sec"] > t + 0.1:
+            continue
+        cx = (e["person_bbox"][0] + e["person_bbox"][2]) / 2.0
+        b0 = int((max(fx0, cx - panel_w / 2) - fx0) / bin_w)
+        b1 = int((min(fx1, cx + panel_w / 2) - fx0) / bin_w)
+        for b in range(max(0, b0), min(nb, b1 + 1)):
+            hits[b] += 1
+    merged, i = [], 0
+    while i < nb:
+        if hits[i] >= min_hits:
+            j = i
+            while j < nb and hits[j] >= min_hits:
+                j += 1
+            merged.append((round(fx0 + i * bin_w, 3), round(fx0 + j * bin_w, 3)))
+            i = j
+        else:
+            i += 1
+    return merged
+
+
+def width_coverage(events, t, panel_w=0.12, face_x=FACE_X, min_hits=2):
+    """Continuous face-width coverage at time t. COMPLIANT only when the ENTIRE
+    face width is covered (no bare gaps), regardless of how many screens it took."""
+    fx0, fx1 = face_x
+    span = fx1 - fx0
+    merged = install_intervals(events, t, panel_w, face_x, min_hits)
+    cov = sum(b - a for a, b in merged)
+    frac = max(0.0, min(1.0, cov / span))
+    full = frac >= 0.98
+    return {"intervals": merged, "fraction": frac, "full": full,
+            "verdict": "COMPLIANT" if full else "NOT SUPPORTED"}
+
+
 def segment_coverage(events, n=4, face_x=FACE_X):
     """Per-segment install time: the first time the operator works in each of n
     face segments (left->right). Returns a list of n times (or None). Per-mesh

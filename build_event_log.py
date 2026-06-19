@@ -14,7 +14,6 @@ import argparse
 import json
 from pathlib import Path
 import event_log as EL
-from coverage import build_coverage
 
 # verdict -> (severity, is it the safe/compliant state)
 VERDICT_SEV = {"SUPPORTED": EL.INFO, "DRILLING": EL.INFO, "NOT VERIFIED": EL.WARNING,
@@ -79,19 +78,18 @@ def main():
                        description=f"operator reloaded with boom STOPPED (compliant entry): {s['action']}",
                        bbox=s["person_bbox"], evidence=ev, source="operator_safety")
 
-        # 3) face-SEGMENT coverage milestones (4 segments; per-mesh boxes are not
-        #    reliable, so coverage is tracked as 4 coarse face quarters)
-        from coverage import segment_coverage
-        seg_times = segment_coverage(ops, n=4)
-        for i, st in sorted(enumerate(seg_times), key=lambda x: (x[1] is None, x[1] or 0)):
-            if st is not None:
-                lg.log(EL.SCREEN_INSTALLED, st, severity=EL.INFO,
-                       description=f"face segment Q{i+1} of 4 covered", source="coverage",
-                       segment=i + 1)
-        if all(st is not None for st in seg_times):
-            lg.log(EL.COVERAGE_FULL, max(t for t in seg_times if t is not None),
-                   severity=EL.INFO, description="entire face covered (all 4 segments)",
-                   source="coverage")
+        # 3) install-activity coverage milestones (ASSISTIVE: per-mesh detection is
+        #    not reliable; we log when continuous face-width coverage advances). The
+        #    number of screens is not assumed (depends on face size).
+        from coverage import width_coverage
+        last = 0.0
+        for e in sorted([x for x in ops if x.get("person_bbox")], key=lambda x: x["cycle_sec"]):
+            frac = width_coverage(ops, e["cycle_sec"])["fraction"]
+            if frac >= last + 0.10:
+                lg.log(EL.SCREEN_INSTALLED, e["cycle_sec"], severity=EL.INFO,
+                       description=f"install activity: face-width coverage ~{frac*100:.0f}% (assistive)",
+                       source="coverage", coverage=round(frac, 2))
+                last = frac
 
     # report
     s = lg.summary()

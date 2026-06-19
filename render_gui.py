@@ -16,7 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
-from coverage import segment_coverage, segment_state, FACE_X
+from coverage import width_coverage, FACE_X
 
 # BGR colours. Compliance is COVERAGE-driven: COMPLIANT only when the WHOLE face is
 # covered by OVERLAPPING bolted meshes; partial coverage is NOT supported.
@@ -79,9 +79,6 @@ def _load_events(path):
     return sorted(out, key=lambda e: e.get("cycle_sec", 0))
 
 
-N_SEG = 4
-
-
 def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
            events_path=None, operator_path=None):
     data = json.loads(Path(analysis).read_text())
@@ -89,12 +86,11 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
     index = _load_index(index_path)
     events = _load_events(events_path)
     dwins = _danger_windows(events)
-    # 4-segment face coverage from operator install sites (per-mesh boxes are not
-    # reliable, so coverage is tracked as N coarse face segments)
+    # continuous face-width coverage from operator install sites (per-mesh boxes are
+    # not reliable; the number of screens depends on face size and is NOT assumed)
     ops = []
     if operator_path and Path(operator_path).exists():
         ops = json.loads(Path(operator_path).read_text()).get("events", [])
-    seg_times = segment_coverage(ops, n=N_SEG)
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or fps
 
@@ -120,9 +116,9 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         t = fno / vfps
         csec = index.get(fno, t) if index else t
         step = cur_step(t)
-        seg = segment_state(seg_times, csec)
+        cov = width_coverage(ops, csec)
         danger = _danger_active(dwins, csec)
-        v = "DANGER" if danger else seg["verdict"]
+        v = "DANGER" if danger else cov["verdict"]
         canvas = np.full((H, W, 3), 30, dtype=np.uint8)
 
         # banner
@@ -141,21 +137,16 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
                           (int(x1 * vid_w), int(y1 * vid_h)), (0, 220, 220), 2)
             cv2.putText(fr, "model view: end face", (int(x0 * vid_w) + 4, int(y0 * vid_h) + 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 220), 1, cv2.LINE_AA)
-        # 4-segment face-coverage bar (no per-mesh boxes: a bolted mesh blends into
-        # the face and cannot be localised; we show which quarters are covered)
+        # CONTINUOUS face-width coverage bar (no per-mesh boxes, no assumed count):
+        # filled where covered; COMPLIANT only when the whole width is covered
         fx0, fx1 = FACE_X
-        seg_w = (fx1 - fx0) / N_SEG
         bar_y = vid_h - 34
-        cv2.putText(fr, "face coverage", (int(fx0 * vid_w), bar_y - 6),
+        cv2.putText(fr, f"face coverage {cov['fraction']*100:.0f}%", (int(fx0 * vid_w), bar_y - 6),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (230, 230, 230), 1, cv2.LINE_AA)
-        for i in range(N_SEG):
-            sx0 = int((fx0 + i * seg_w) * vid_w)
-            sx1 = int((fx0 + (i + 1) * seg_w) * vid_w)
-            c = (70, 170, 70) if seg["covered"][i] else (70, 70, 70)
-            cv2.rectangle(fr, (sx0, bar_y), (sx1, vid_h - 8), c, -1)
-            cv2.rectangle(fr, (sx0, bar_y), (sx1, vid_h - 8), (220, 220, 220), 1)
-            cv2.putText(fr, f"Q{i+1}", (sx0 + 6, vid_h - 14),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.rectangle(fr, (int(fx0 * vid_w), bar_y), (int(fx1 * vid_w), vid_h - 8), (70, 70, 70), -1)
+        for a, b in cov["intervals"]:
+            cv2.rectangle(fr, (int(a * vid_w), bar_y), (int(b * vid_w), vid_h - 8), (70, 170, 70), -1)
+        cv2.rectangle(fr, (int(fx0 * vid_w), bar_y), (int(fx1 * vid_w), vid_h - 8), (220, 220, 220), 1)
         canvas[92:92 + vid_h, 10:10 + vid_w] = fr
 
         # cycle clock
@@ -166,7 +157,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         cv2.putText(canvas, "Compliance: full overlapping mesh coverage", (panel_x, 110),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 2, cv2.LINE_AA)
         cov_items = [
-            ("Entire end face covered (all 4 segments)", "verified" if seg["full"] else "not_verified"),
+            ("Entire face width covered by mesh", "verified" if cov["full"] else "not_verified"),
             ("Operator clear of moving boom", "violation" if danger else "not_verified"),
         ]
         y = 150
@@ -178,7 +169,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
                 cv2.putText(canvas, ln, (panel_x + 44, y + i * 22), cv2.FONT_HERSHEY_SIMPLEX,
                             0.5, c, 1, cv2.LINE_AA)
             y += 26 + 22 * max(1, len(_wrap(label, 30)))
-        cv2.putText(canvas, f"face coverage: {sum(seg['covered'])}/{N_SEG} segments",
+        cv2.putText(canvas, f"install activity: {cov['fraction']*100:.0f}% of face width (assistive)",
                     (panel_x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 60), 2, cv2.LINE_AA)
         y += 28
 
