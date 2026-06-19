@@ -141,6 +141,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
     f_num = _font("b", 60); f_verdict = _font("b", 42); f_h1 = _font("b", 22)
     f_eye = _font("m", 12); f_body = _font("r", 16); f_small = _font("r", 14)
     f_mono = _font("mono", 14); f_monob = _font("monob", 15); f_title = _font("b", 18)
+    f_cap = _font("b", 19)   # camera-feed caption (kept large + bold for legibility)
 
     # geometry
     W, H = 1376, 788
@@ -193,12 +194,17 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         # ---- camera feed (hero)
         fr = cv2.cvtColor(cv2.resize(frame, (vw, vh)), cv2.COLOR_BGR2RGB)
         img.paste(Image.fromarray(fr), (vx, vy))
-        # caption strip (semi-transparent) along the feed's bottom
-        strip = Image.new("RGBA", (vw, 30), (8, 11, 16, 175))
-        img.paste(strip, (vx, vy + vh - 30), strip)
-        d.text((vx + 12, vy + vh - 24), "FRONT RGB  ·  END FACE", font=f_small, fill=(190, 198, 208))
-        now = "Operator at face — boom moving" if danger else NOW.get(step["verdict"], "Monitoring")
-        _right(d, vx + vw - 12, vy + vh - 24, now, f_small, accent if danger else (190, 198, 208))
+        # caption strip (taller + more opaque so the text reads over the footage)
+        ch = 46
+        strip = Image.new("RGBA", (vw, ch), (6, 9, 13, 212))
+        img.paste(strip, (vx, vy + vh - ch), strip)
+        cy = vy + vh - 33
+        # amber tick + bright label on the left
+        d.rounded_rectangle([vx + 14, cy + 4, vx + 20, cy + 16], radius=2, fill=AMBER)
+        d.text((vx + 30, cy), "FRONT RGB · END FACE", font=f_cap, fill=INK)
+        # current activity on the right, in the live status colour
+        now = "OPERATOR AT FACE — BOOM MOVING" if danger else NOW.get(step["verdict"], "Monitoring").upper()
+        _right(d, vx + vw - 14, cy, now, f_cap, accent)
         # status-coloured frame around the feed
         d.rectangle([vx - 2, vy - 2, vx + vw + 1, vy + vh + 1], outline=accent, width=3 if danger else 2)
 
