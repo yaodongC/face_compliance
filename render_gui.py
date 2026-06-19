@@ -123,15 +123,13 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
     if operator_path and Path(operator_path).exists():
         ops = json.loads(Path(operator_path).read_text()).get("events", [])
     installs = mesh_installs(ops)
-    # dense classical danger-zone entries (catches the brief bolt-reload visits the
-    # VLM scan missed); danger state holds for the whole presence interval
-    entries = []
-    ef = Path("data/operator_entries.json")
-    if ef.exists():
-        entries = json.loads(ef.read_text()).get("entries", [])
-    # hold the alarm for the realistic length of a reload visit (~14 s) even when the
-    # orange signal only flickered above threshold for an instant
-    dwins = [(e["time"] - 1, max(e.get("end", e["time"]), e["time"] + 13)) for e in entries
+    # operator danger-zone entries from the VLM operator scan, which confirms a
+    # PERSON (no orange-colour false positives). One entry per reload visit.
+    from operator_safety import classify_sessions
+    entries = [{"time": s["start"], "end": s["end"], "verdict": s["verdict"]}
+               for s in classify_sessions(ops)] if ops else []
+    # hold the alarm for the realistic length of a reload visit (~14 s)
+    dwins = [(e["time"] - 1, max(e["end"], e["time"] + 13)) for e in entries
              if e["verdict"] == "NON_COMPLIANT_ENTRY"]
 
     cap = cv2.VideoCapture(video)

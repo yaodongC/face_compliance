@@ -44,27 +44,27 @@ def main():
     lg = EL.EventLogger(a.out, reset=True)
     cyc = _cycle_mapper(a.index)
 
-    # danger-zone ENTRIES (dense classical orange detection; classification
-    #    reconciled with the VLM scan). The operator must enter to reload - that is
-    #    normal; non-compliant ONLY when the boom was still moving at entry.
-    ep = Path("data/operator_entries.json")
-    if ep.exists():
-        for e in json.loads(ep.read_text())["entries"]:
-            if e["verdict"] == "NON_COMPLIANT_ENTRY":
-                lg.log(EL.OPERATOR_IN_ZONE, e.get("end", e["time"]), severity=EL.VIOLATION,
-                       description=f"operator entered danger zone while boom MOVING "
-                                   f"(motion {e['boom_motion']})", source="entries",
-                       started_at=e["time"])
-            else:
-                lg.log(EL.OPERATOR_IN_ZONE, e["time"], severity=EL.INFO,
-                       description="operator entered danger zone to reload — boom stopped",
-                       source="entries")
-
-    # 3) mesh-install milestones (ESTIMATE: a new mesh = a new TEMPORAL install
-    #    episode; the total depends on face size and is not assumed).
+    # operator danger-zone ENTRIES from the VLM operator scan (confirms a PERSON, so
+    # no orange-colour false positives). The operator must enter to reload - that is
+    # normal; non-compliant ONLY when the boom was still moving at entry
+    # (boom_motion_thresh in config.yaml).
     if Path(a.operator).exists():
+        from operator_safety import classify_sessions
         from coverage import mesh_installs
         ops = json.loads(Path(a.operator).read_text())["events"]
+        for s in classify_sessions(ops):
+            ev = f"data/operator_frames/op_{int(s['start']):05d}.png"
+            if s["verdict"] == "NON_COMPLIANT_ENTRY":
+                lg.log(EL.OPERATOR_IN_ZONE, s["end"], severity=EL.VIOLATION,
+                       description=f"operator entered danger zone while boom MOVING "
+                                   f"(entry motion {s['entry_motion']:.3f})",
+                       bbox=s["person_bbox"], evidence=ev, source="operator_safety",
+                       started_at=s["start"], duration_sec=round(s["end"] - s["start"], 1))
+            else:
+                lg.log(EL.OPERATOR_IN_ZONE, s["start"], severity=EL.INFO,
+                       description="operator entered danger zone to reload — boom stopped",
+                       bbox=s["person_bbox"], evidence=ev, source="operator_safety")
+        # mesh-install milestones (a new mesh = a new TEMPORAL install episode)
         for k, ins in enumerate(mesh_installs(ops)):
             lg.log(EL.SCREEN_INSTALLED, ins["time"], severity=EL.INFO,
                    description=f"mesh #{k+1} installed (estimate)", source="coverage",
