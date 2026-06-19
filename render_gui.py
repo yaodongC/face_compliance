@@ -51,7 +51,7 @@ def _wrap(text, width):
     return lines
 
 
-def render(video, analysis, out, index_path=None, fps=15.0):
+def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None):
     data = json.loads(Path(analysis).read_text())
     steps = sorted(data["steps"], key=lambda s: s["t_sec"])
     items = data["meta"]["items"]
@@ -90,8 +90,15 @@ def render(video, analysis, out, index_path=None, fps=15.0):
         cv2.putText(canvas, SUBTITLE.get(v, ""), (16, 78), cv2.FONT_HERSHEY_SIMPLEX,
                     0.5, (210, 210, 210), 1, cv2.LINE_AA)
 
-        # video
+        # video (with the analysed face-crop region drawn so the viewer can see
+        # exactly what the model judges)
         fr = cv2.resize(frame, (vid_w, vid_h))
+        if face_crop:
+            x0, y0, x1, y1 = face_crop
+            cv2.rectangle(fr, (int(x0 * vid_w), int(y0 * vid_h)),
+                          (int(x1 * vid_w), int(y1 * vid_h)), (0, 220, 220), 2)
+            cv2.putText(fr, "model view: end face", (int(x0 * vid_w) + 4, int(y0 * vid_h) + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 220), 1, cv2.LINE_AA)
         canvas[92:92 + vid_h, 10:10 + vid_w] = fr
 
         # cycle clock
@@ -142,13 +149,18 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--index")
     ap.add_argument("--fps", type=float, default=15.0)
+    ap.add_argument("--face-crop-config", default="config.yaml",
+                    help="config to read the face_crop box from (for the overlay)")
     a = ap.parse_args()
     video, analysis = a.video, a.analysis
-    if a.config:
-        cfg = yaml.safe_load(Path(a.config).read_text())
+    face_crop = None
+    cfgpath = a.config or a.face_crop_config
+    if cfgpath and Path(cfgpath).exists():
+        cfg = yaml.safe_load(Path(cfgpath).read_text())
         video = video or cfg["paths"]["video"]
         analysis = analysis or cfg["paths"]["analysis"]
-    render(video, analysis, a.out, a.index, a.fps)
+        face_crop = cfg.get("face_crop")
+    render(video, analysis, a.out, a.index, a.fps, face_crop)
 
 
 if __name__ == "__main__":
