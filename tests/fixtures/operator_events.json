@@ -1,0 +1,433 @@
+{
+  "events": [
+    {
+      "bag": 12,
+      "cycle_sec": 757.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.066,
+      "hi_vis": true,
+      "person_bbox": [
+        0.29,
+        0.68,
+        0.39,
+        0.92
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing near the dril"
+    },
+    {
+      "bag": 12,
+      "cycle_sec": 765.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.062,
+      "hi_vis": true,
+      "person_bbox": [
+        0.255,
+        0.84,
+        0.345,
+        1.0
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 13,
+      "cycle_sec": 833.4,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.009,
+      "hi_vis": true,
+      "person_bbox": [
+        0.27,
+        0.73,
+        0.42,
+        1.0
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing near the dril"
+    },
+    {
+      "bag": 14,
+      "cycle_sec": 837.2,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.0,
+      "hi_vis": true,
+      "person_bbox": [
+        0.36,
+        0.64,
+        0.41,
+        0.82
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing near the dril"
+    },
+    {
+      "bag": 16,
+      "cycle_sec": 997.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.055,
+      "hi_vis": true,
+      "person_bbox": [
+        0.35,
+        0.72,
+        0.42,
+        0.98
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 16,
+      "cycle_sec": 1005.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.086,
+      "hi_vis": true,
+      "person_bbox": [
+        0.4,
+        0.63,
+        0.48,
+        0.81
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is visible in front of th"
+    },
+    {
+      "bag": 21,
+      "cycle_sec": 1265.4,
+      "verdict": "DANGER",
+      "arm_motion": 0.023,
+      "hi_vis": true,
+      "person_bbox": [
+        0.32,
+        0.6,
+        0.4,
+        0.75
+      ],
+      "action": "fitting a friction bolt",
+      "note": "Worker is visible in high-visibility clothing, actively enga"
+    },
+    {
+      "bag": 23,
+      "cycle_sec": 1377.3,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.0,
+      "hi_vis": true,
+      "person_bbox": [
+        0.27,
+        0.72,
+        0.35,
+        0.98
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 23,
+      "cycle_sec": 1385.3,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.007,
+      "hi_vis": true,
+      "person_bbox": [
+        0.357,
+        0.643,
+        0.406,
+        0.727
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 24,
+      "cycle_sec": 1469.4,
+      "verdict": "DANGER",
+      "arm_motion": 0.022,
+      "hi_vis": true,
+      "person_bbox": [
+        0.43,
+        0.73,
+        0.53,
+        0.85
+      ],
+      "action": "fitting a friction bolt",
+      "note": "Worker in high-visibility clothing is visible in front of th"
+    },
+    {
+      "bag": 24,
+      "cycle_sec": 1477.4,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.009,
+      "hi_vis": true,
+      "person_bbox": [
+        0.38,
+        0.61,
+        0.51,
+        0.76
+      ],
+      "action": "fitting a friction bolt",
+      "note": "Worker is visible in high-visibility clothing, actively enga"
+    },
+    {
+      "bag": 25,
+      "cycle_sec": 1497.2,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.0,
+      "hi_vis": true,
+      "person_bbox": [
+        0.43,
+        0.72,
+        0.53,
+        0.85
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is visible in front of th"
+    },
+    {
+      "bag": 25,
+      "cycle_sec": 1529.4,
+      "verdict": "DANGER",
+      "arm_motion": 0.138,
+      "hi_vis": true,
+      "person_bbox": [
+        0.56,
+        0.34,
+        0.66,
+        0.44
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is visible in front of th"
+    },
+    {
+      "bag": 25,
+      "cycle_sec": 1537.4,
+      "verdict": "DANGER",
+      "arm_motion": 0.111,
+      "hi_vis": true,
+      "person_bbox": [
+        0.55,
+        0.35,
+        0.65,
+        0.45
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is visible in front of th"
+    },
+    {
+      "bag": 27,
+      "cycle_sec": 1633.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.05,
+      "hi_vis": true,
+      "person_bbox": [
+        0.23,
+        0.88,
+        0.29,
+        0.99
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is visible near the drill"
+    },
+    {
+      "bag": 27,
+      "cycle_sec": 1641.4,
+      "verdict": "DANGER",
+      "arm_motion": 0.03,
+      "hi_vis": true,
+      "person_bbox": [
+        0.32,
+        0.72,
+        0.39,
+        0.92
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 33,
+      "cycle_sec": 2017.4,
+      "verdict": "DANGER",
+      "arm_motion": 0.091,
+      "hi_vis": true,
+      "person_bbox": [
+        0.16,
+        0.88,
+        0.25,
+        1.0
+      ],
+      "action": "walking",
+      "note": "Worker in high-visibility clothing is visible in the foregro"
+    },
+    {
+      "bag": 33,
+      "cycle_sec": 2025.4,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.015,
+      "hi_vis": true,
+      "person_bbox": [
+        0.32,
+        0.68,
+        0.41,
+        0.82
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 37,
+      "cycle_sec": 2217.2,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.0,
+      "hi_vis": true,
+      "person_bbox": [
+        0.18,
+        0.88,
+        0.28,
+        1.0
+      ],
+      "action": "walking",
+      "note": "Worker in high-visibility clothing is visible in the foregro"
+    },
+    {
+      "bag": 37,
+      "cycle_sec": 2225.2,
+      "verdict": "DANGER",
+      "arm_motion": 0.145,
+      "hi_vis": true,
+      "person_bbox": [
+        0.26,
+        0.65,
+        0.35,
+        0.96
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing near the dril"
+    },
+    {
+      "bag": 37,
+      "cycle_sec": 2233.2,
+      "verdict": "DANGER",
+      "arm_motion": 0.115,
+      "hi_vis": true,
+      "person_bbox": [
+        0.34,
+        0.72,
+        0.39,
+        0.99
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing near the dril"
+    },
+    {
+      "bag": 37,
+      "cycle_sec": 2241.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.046,
+      "hi_vis": true,
+      "person_bbox": [
+        0.29,
+        0.72,
+        0.35,
+        0.98
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 42,
+      "cycle_sec": 2517.2,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.0,
+      "hi_vis": true,
+      "person_bbox": [
+        0.38,
+        0.64,
+        0.44,
+        0.78
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 45,
+      "cycle_sec": 2713.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.051,
+      "hi_vis": true,
+      "person_bbox": [
+        0.42,
+        0.62,
+        0.48,
+        0.76
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is visible in front of th"
+    },
+    {
+      "bag": 47,
+      "cycle_sec": 2873.5,
+      "verdict": "DANGER",
+      "arm_motion": 0.046,
+      "hi_vis": true,
+      "person_bbox": [
+        0.465,
+        0.636,
+        0.532,
+        0.708
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is visible in front of th"
+    },
+    {
+      "bag": 53,
+      "cycle_sec": 3201.3,
+      "verdict": "OK_LOADING",
+      "arm_motion": 0.011,
+      "hi_vis": true,
+      "person_bbox": [
+        0.24,
+        0.83,
+        0.34,
+        1.0
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    },
+    {
+      "bag": 53,
+      "cycle_sec": 3209.3,
+      "verdict": "DANGER",
+      "arm_motion": 0.059,
+      "hi_vis": true,
+      "person_bbox": [
+        0.38,
+        0.68,
+        0.43,
+        0.81
+      ],
+      "action": "standing",
+      "note": "Worker in high-visibility clothing is standing in front of t"
+    }
+  ],
+  "summary": {
+    "DANGER": 17,
+    "OK_LOADING": 10
+  },
+  "danger_count": 17,
+  "danger_times": [
+    "12:37",
+    "12:45",
+    "16:37",
+    "16:45",
+    "21:05",
+    "24:29",
+    "25:29",
+    "25:37",
+    "27:13",
+    "27:21",
+    "33:37",
+    "37:05",
+    "37:13",
+    "37:21",
+    "45:13",
+    "47:53",
+    "53:29"
+  ]
+}
