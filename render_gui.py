@@ -129,7 +129,9 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
     ef = Path("data/operator_entries.json")
     if ef.exists():
         entries = json.loads(ef.read_text()).get("entries", [])
-    dwins = [(e["time"], e.get("end", e["time"])) for e in entries
+    # hold the alarm for the realistic length of a reload visit (~14 s) even when the
+    # orange signal only flickered above threshold for an instant
+    dwins = [(e["time"] - 1, max(e.get("end", e["time"]), e["time"] + 13)) for e in entries
              if e["verdict"] == "NON_COMPLIANT_ENTRY"]
 
     cap = cv2.VideoCapture(video)
