@@ -4,18 +4,16 @@ The lethal scenario: after each screen is installed the jumbo operator walks IN
 FRONT of the machine to load a new screen + friction bolt onto a boom. Drilling /
 boom movement MUST be fully stopped while they do this. We detect:
 
-  * arm_motion  -- classical-CV frame differencing in the lower-centre 'danger
-                   zone' ROI (booms + the space the operator stands in). Reliable,
-                   no hallucination. ~0.00 = still, >motion_thresh = moving.
-  * person_in_front -- VLM check (a worker on foot in front of the jumbo).
+  * person_in_front + person_bbox -- VLM (Qwen grounding) spots the worker and
+    locates them.
+  * arm_motion -- classical-CV frame differencing in the lower-centre danger-zone
+    ROI, with the OPERATOR'S OWN region MASKED OUT (so we measure the boom/arm
+    moving, not the operator walking). Reliable, no hallucination.
 
 Rule (fail-safe):
-  DANGER          = person_in_front AND arm moving (drilling NOT stopped)
-  OK_LOADING      = person_in_front AND arm stopped (compliant: drilling stopped)
-  (no person)     = motion is informational only
-
-This is the strongest, most safety-relevant signal in the harness: it never needs
-the VLM to make a fine judgement, only to spot a person; the motion is measured.
+  DANGER      = person_in_front AND arm (boom) moving  -> drilling NOT stopped
+  OK_LOADING  = person_in_front AND arm stopped         -> compliant
+  NO_PERSON   = nobody in front; motion is informational only
 """
 from __future__ import annotations
 import base64
@@ -28,38 +26,55 @@ import requests
 # danger-zone ROI as fractions [y0,y1,x0,x1] -- lower centre (booms + operator)
 DANGER_ROI = (0.45, 1.0, 0.20, 0.80)
 MOTION_PX_THRESH = 25      # per-pixel abs-diff threshold
-MOTION_FRAC_THRESH = 0.02  # fraction of ROI pixels changed => "arm moving"
+MOTION_FRAC_THRESH = 0.02  # fraction of (un-masked) ROI pixels changed => moving
 
-PERSON_PROMPT = ('Underground mine, camera on a drill jumbo facing the rock face. '
-                 'JSON only: {"person_in_front":bool (a person/worker on foot in front '
-                 'of the jumbo, near the face or booms),"hi_vis":bool (orange/yellow '
-                 'hi-vis visible),"note":"<short>"}')
+PERSON_PROMPT = (
+    'Underground mine, camera on a drill jumbo facing the rock face. Find the '
+    'WORKER on foot in front of the jumbo (hi-vis). Return JSON only: '
+    '{"person_in_front":bool,"hi_vis":bool,'
+    '"person_bbox":[x0,y0,x1,y1] as fractions 0-1 of the image (or null),'
+    '"action":"<if a worker is in front, what are they doing? e.g. loading a '
+    'screen/mesh onto a boom, fitting a friction bolt, reaching up to the face, '
+    'walking, standing - else empty>","note":"<short>"}')
 
 
-def roi_gray(img):
+def _roi_gray(img):
     h, w = img.shape[:2]
     y0, y1, x0, x1 = DANGER_ROI
-    crop = img[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)]
-    return cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    return cv2.cvtColor(img[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)],
+                        cv2.COLOR_BGR2GRAY)
 
 
-def arm_motion(prev_img, img) -> float:
-    """Fraction of danger-zone pixels that changed -- proxy for boom/arm movement."""
-    d = cv2.absdiff(roi_gray(prev_img), roi_gray(img))
-    return float((d > MOTION_PX_THRESH).mean())
+def arm_motion(prev_img, img, person_bbox=None, pad=12) -> float:
+    """Fraction of danger-zone pixels that changed, with the operator's bbox
+    masked out so the result reflects BOOM/ARM movement, not the operator."""
+    h, w = img.shape[:2]
+    diff = (cv2.absdiff(_roi_gray(prev_img), _roi_gray(img)) > MOTION_PX_THRESH).astype(np.uint8)
+    if person_bbox:
+        y0r, _, x0r, _ = DANGER_ROI
+        zy0, zx0 = int(y0r * h), int(x0r * w)
+        zh, zw = diff.shape
+        bx0, by0, bx1, by1 = person_bbox
+        px0 = max(0, int(bx0 * w) - zx0 - pad)
+        px1 = min(zw, int(bx1 * w) - zx0 + pad)
+        py0 = max(0, int(by0 * h) - zy0 - pad)
+        py1 = min(zh, int(by1 * h) - zy0 + pad)
+        if px1 > px0 and py1 > py0:
+            diff[py0:py1, px0:px1] = 0
+    return float(diff.mean())
 
 
 def detect_person(img, cfg, *, session=None) -> dict:
     h, w = img.shape[:2]
-    c = cv2.resize(img, (1100, int(h * 1100 / w)))
-    ok, buf = cv2.imencode(".jpg", c, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+    c = cv2.resize(img, (1000, int(h * 1000 / w)))
+    ok, buf = cv2.imencode(".jpg", c, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
     b64 = base64.b64encode(buf.tobytes()).decode()
     msgs = [{"role": "user", "content": [
         {"type": "text", "text": PERSON_PROMPT},
         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]
     sess = session or requests
     r = sess.post(f"{cfg['endpoint']}/chat/completions",
-                  json={"model": cfg["model"], "messages": msgs, "max_tokens": 120,
+                  json={"model": cfg["model"], "messages": msgs, "max_tokens": 140,
                         "temperature": 0.0}, timeout=120).json()
     t = r["choices"][0]["message"]["content"]
     m = re.search(r"\{.*\}", t, re.S)
@@ -67,16 +82,51 @@ def detect_person(img, cfg, *, session=None) -> dict:
         d = json.loads(m.group(0)) if m else {}
     except json.JSONDecodeError:
         d = {}
+    bb = d.get("person_bbox")
+    if not (isinstance(bb, (list, tuple)) and len(bb) == 4 and all(isinstance(x, (int, float)) for x in bb)):
+        bb = None
     return {"person_in_front": bool(d.get("person_in_front")),
-            "hi_vis": bool(d.get("hi_vis")), "note": d.get("note", "")}
+            "hi_vis": bool(d.get("hi_vis")), "person_bbox": bb,
+            "action": str(d.get("action", "") or ""), "note": d.get("note", "")}
 
 
-def classify(person_in_front: bool, motion: float,
+def annotate(frame, person_bbox=None, verdict="NO_PERSON", action="",
+             motion=None, cycle_sec=None):
+    """Draw the danger-zone ROI, the person bbox, and the verdict/action onto a
+    copy of the frame so a human can verify the model's detection."""
+    img = frame.copy()
+    h, w = img.shape[:2]
+    # danger-zone ROI (yellow)
+    y0, y1, x0, x1 = DANGER_ROI
+    cv2.rectangle(img, (int(x0 * w), int(y0 * h)), (int(x1 * w), int(y1 * h)), (0, 220, 220), 2)
+    cv2.putText(img, "danger zone", (int(x0 * w) + 6, int(y0 * h) + 26),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 220, 220), 2, cv2.LINE_AA)
+    # person bbox: red if DANGER else green
+    col = (40, 40, 220) if verdict == "DANGER" else (60, 200, 60)
+    if person_bbox:
+        bx0, by0, bx1, by1 = person_bbox
+        cv2.rectangle(img, (int(bx0 * w), int(by0 * h)), (int(bx1 * w), int(by1 * h)), col, 3)
+        cv2.putText(img, "operator", (int(bx0 * w), max(20, int(by0 * h) - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, col, 2, cv2.LINE_AA)
+    # banner
+    cv2.rectangle(img, (0, 0), (w, 64), col if verdict != "NO_PERSON" else (60, 60, 60), -1)
+    txt = verdict + (f"   boom motion={motion:.3f}" if motion is not None else "")
+    if cycle_sec is not None:
+        txt = f"cycle {int(cycle_sec)//60:02d}:{int(cycle_sec)%60:02d}   " + txt
+    cv2.putText(img, txt, (14, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+    if action:
+        cv2.putText(img, "operator: " + action[:70], (14, 56),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+    return img
+
+
+def classify(person_in_front: bool, arm_motion_value: float,
              motion_thresh: float = MOTION_FRAC_THRESH) -> str:
-    """Fail-safe operator-zone verdict."""
-    moving = motion > motion_thresh
+    """Fail-safe operator-zone verdict (arm_motion_value should be the
+    person-masked motion)."""
+    moving = arm_motion_value > motion_thresh
     if person_in_front and moving:
-        return "DANGER"          # operator in front while the arm is moving
+        return "DANGER"          # operator in front while the boom is moving
     if person_in_front and not moving:
         return "OK_LOADING"      # operator in front, drilling stopped (compliant)
     return "NO_PERSON"

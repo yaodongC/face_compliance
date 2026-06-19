@@ -3,15 +3,15 @@ from operator_safety import classify, arm_motion, MOTION_FRAC_THRESH
 
 
 def test_classify_danger_person_and_moving():
-    assert classify(person_in_front=True, motion=0.10) == "DANGER"
+    assert classify(True, 0.10) == "DANGER"
 
 
 def test_classify_ok_loading_person_and_stopped():
-    assert classify(person_in_front=True, motion=0.001) == "OK_LOADING"
+    assert classify(True, 0.001) == "OK_LOADING"
 
 
 def test_classify_no_person():
-    assert classify(person_in_front=False, motion=0.20) == "NO_PERSON"
+    assert classify(False, 0.20) == "NO_PERSON"
 
 
 def test_motion_threshold_boundary():
