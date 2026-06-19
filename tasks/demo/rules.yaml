@@ -1,8 +1,13 @@
 # Example second task: PPE check. Same engine, different decision table.
+# The `default` is the FAIL-SAFE: it fires when facts are missing/garbled, so it must
+# be the CONSERVATIVE (non-passing) verdict, never COMPLIANT. Here a missing helmet/
+# vest fact -> NEEDS_REVIEW, not a silent pass.
 ppe:
   rules:
+    - when: {helmet: true, vest: true}
+      verdict: COMPLIANT
     - when: {helmet: false}
       verdict: VIOLATION
     - when: {vest: false}
       verdict: VIOLATION
-  default: COMPLIANT
+  default: NEEDS_REVIEW

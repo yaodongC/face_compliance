@@ -54,11 +54,14 @@ def validate(p):
     for key, src in [("boom_motion_thresh", o), ("motion_px_thresh", o),
                      ("session_gap", o), ("mesh_gap", c), ("mesh_min_events", c),
                      ("width_panel_w", c), ("width_min_hits", c), ("screen_send_w", o),
-                     ("person_send_w", o), ("person_max_tokens", o), ("screen_max_tokens", o)]:
+                     ("person_send_w", o), ("person_max_tokens", o), ("screen_max_tokens", o),
+                     ("segments", c)]:
         if not (_num(src[key]) and src[key] > 0):
             raise ValueError(f"config params: {key} must be a positive number, got {src[key]!r}")
     if not (_num(o["min_orange"]) and o["min_orange"] >= 0):
         raise ValueError(f"config params.operator.min_orange must be >= 0, got {o['min_orange']!r}")
+    if not (_num(c["min_overlap"]) and 0 <= c["min_overlap"] < 1):
+        raise ValueError(f"config params.coverage.min_overlap must be in [0,1), got {c['min_overlap']!r}")
     # fractions in [0,1]
     for key, src in [("full_coverage_frac", c)]:
         if not (_num(src[key]) and 0 < src[key] <= 1):

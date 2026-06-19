@@ -27,6 +27,11 @@ from prompt_config import PROMPTS
 from rule_config import RULES
 from rules_engine import decide
 
+# this feature extractor is face-support-specific: it needs these verdict tables
+for _t in ("operator_entry", "operator_live"):
+    if _t not in RULES:
+        raise RuntimeError(f"SAFETY: active task bundle has no '{_t}' rules table (required by operator_safety)")
+
 _OP = PARAMS["operator"]   # single source of truth (config.yaml params.operator)
 # danger-zone ROI as fractions [y0,y1,x0,x1] -- lower centre (booms + operator)
 DANGER_ROI = tuple(_OP["danger_roi"])

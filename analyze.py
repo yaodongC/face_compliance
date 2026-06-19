@@ -57,7 +57,8 @@ def run_analysis(cfg, *, stub=False) -> dict:
               f"drill={int(bool(perception.get('drill_active')))} "
               f"park={int(bool(perception.get('arms_parked')))}  "
               f"{perception.get('scene','')[:55]}")
-    out = {"meta": {"video": cfg["paths"]["video"], "model": cfg["model"],
+    from task import active_task
+    out = {"meta": {"task": active_task(), "video": cfg["paths"]["video"], "model": cfg["model"],
                     "sampling_sec": cfg["sampling_sec"], "window": cfg["window_frames"],
                     "support_window": cfg.get("support_window", 3),
                     "items": [{"id": it.id, "label": it.label} for it in items]},

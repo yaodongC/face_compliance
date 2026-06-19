@@ -1,11 +1,26 @@
 """Generalisation: the engine is task-agnostic. A second task bundle (tasks/demo/)
 loads through the SAME loaders + rules engine with no code change, and the default
 task (face_support) is unaffected."""
+import pytest
 from prompt_config import load as load_prompts
 from rule_config import load as load_rules
 from harness_config import load as load_params
 from rules_engine import decide
 import task
+
+
+def test_nonexistent_task_fails_loudly():
+    with pytest.raises(RuntimeError):
+        task.task_dir("definitely_not_a_real_task")
+
+
+def test_failsafe_default_is_never_the_passing_verdict():
+    # the demo's fail-safe default must be conservative (absent facts must not pass)
+    assert load_rules("demo")["ppe"]["default"] != "COMPLIANT"
+    # and face_support's coverage defaults are the non-compliant verdict
+    fs = load_rules("face_support")
+    assert fs["coverage_full"]["default"] == "NOT SUPPORTED"
+    assert fs["coverage_overlap"]["default"] == "NOT SUPPORTED"
 
 
 def test_active_task_default_is_face_support():

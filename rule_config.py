@@ -18,6 +18,13 @@ def load(task: str | None = None) -> dict:
     for name, table in data.items():
         if not (isinstance(table, dict) and isinstance(table.get("rules"), list) and "default" in table):
             raise RuntimeError(f"SAFETY: rules table '{name}' must have a 'rules' list and a fail-safe 'default'")
+        if table["default"] is None:
+            raise RuntimeError(f"SAFETY: rules table '{name}' default is null — must be an explicit verdict")
+        for i, rule in enumerate(table["rules"]):
+            if not isinstance(rule.get("when"), dict):
+                raise RuntimeError(f"SAFETY: rules table '{name}' rule[{i}] needs a 'when' mapping")
+            if "verdict" not in rule:
+                raise RuntimeError(f"SAFETY: rules table '{name}' rule[{i}] needs a 'verdict'")
     return data
 
 

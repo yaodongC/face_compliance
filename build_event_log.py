@@ -11,9 +11,11 @@ Usage: python3 build_event_log.py [--analysis data/full_cycle_analysis.json]
 """
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import event_log as EL
+from task import active_task, task_dir
 
 # verdict -> (severity, is it the safe/compliant state)
 VERDICT_SEV = {"SUPPORTED": EL.INFO, "DRILLING": EL.INFO, "NOT VERIFIED": EL.WARNING,
@@ -69,6 +71,18 @@ def main():
             lg.log(EL.SCREEN_INSTALLED, ins["time"], severity=EL.INFO,
                    description=f"mesh #{k+1} installed (estimate)", source="coverage",
                    mesh=k + 1, cx=ins["cx"])
+
+    # run-provenance sidecar (audit: which task bundle + exact rules/params/prompts
+    # produced this log). Separate file -> does not change the event log itself.
+    td = task_dir()
+
+    def _sha(p):
+        return hashlib.sha256(p.read_bytes()).hexdigest()[:16] if p.exists() else None
+
+    meta = {"task": active_task(), "events": lg.summary()["total"],
+            "rules_sha": _sha(td / "rules.yaml"), "params_sha": _sha(td / "params.yaml"),
+            "prompts_sha": _sha(td / "prompts.yaml")}
+    Path(a.out).with_suffix(".meta.json").write_text(json.dumps(meta, indent=2))
 
     # report
     s = lg.summary()

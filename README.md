@@ -95,13 +95,17 @@ tasks/face_support/
   prompts.yaml   # VLM prompts (system / person / screen)
   rules.yaml     # verdict decision tables (rules_engine: first-match, fail-safe default)
 ```
-The active task is `config.yaml` `task:` (or env `HARNESS_TASK`). The engine
-(perception client, feature extractors, rules engine, event log, GUI) is shared;
-swapping the bundle runs a different inspection **with no code change** — see
-`tasks/demo/` (a PPE example) and `tests/test_task_bundle.py`. Per-domain *feature
-extractors* (what computes the booleans a rule consumes) are still code; the bundle
-is everything declarative. **Every bundle must be validated against its own golden
-eval set before go-live** — a well-formed but wrong rule is a hazard.
+The active task is `config.yaml` `task:` (or env `HARNESS_TASK`; an override is logged
+and a missing bundle fails loudly). **Scope of "no code change":** the
+*thresholds, prompts and verdict rules* are swappable per task without touching the
+engine (see `tasks/demo/` + `tests/test_task_bundle.py`). The **feature extractors**
+(`operator_safety.py`, `coverage.py`) and the perception fields they produce are
+**face-support-specific code** — a genuinely new domain (e.g. the demo PPE check)
+needs its own extractor module that turns frames into the booleans its rules consume.
+The bundle is the declarative half; the perception half is code. **Every bundle must
+be validated against its own golden eval set before go-live** — a well-formed but
+wrong rule is a hazard. A run records its task + bundle hashes in
+`data/event_log.meta.json` (audit provenance).
 
 > Safety-critical refactors here are gated by **output equivalence**: the rule layer
 > is locked by `tests/test_equivalence.py` (golden fixtures) and the full pipeline by

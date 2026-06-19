@@ -21,6 +21,10 @@ from harness_config import PARAMS
 from rule_config import RULES
 from rules_engine import decide
 
+for _t in ("coverage_full", "coverage_overlap"):    # required verdict tables
+    if _t not in RULES:
+        raise RuntimeError(f"SAFETY: active task bundle has no '{_t}' rules table (required by coverage)")
+
 _CV = PARAMS["coverage"]   # single source of truth (config.yaml params.coverage)
 # face region of the frame that gets screened (fractions): exclude floor/edges
 FACE_X = tuple(_CV["face_x"])
@@ -158,7 +162,8 @@ def coverage_state(meshes, t, face_x=FACE_X, min_overlap=_CV["min_overlap"]):
                        key=lambda m: m["bbox"][0])
     if not installed:
         return {"fraction": 0.0, "full": False, "overlaps": False,
-                "verdict": "NOT SUPPORTED", "n_panels": 0}
+                "verdict": decide(RULES["coverage_overlap"], {"full": False, "overlaps": False}),
+                "n_panels": 0}
     # union coverage of the face band
     cov = 0.0
     cursor = fx0
