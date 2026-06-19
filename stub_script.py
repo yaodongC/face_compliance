@@ -1,53 +1,47 @@
-"""Canned VLM responses so the pipeline + GUI run without a served model.
+"""Canned perception responses so the pipeline + GUI run without a served model.
 
-The sequence walks through the bolting process so the checklist fills
-progressively, and injects a transient safety violation (S1) mid-way.
+The scripted sequence honestly exercises the fail-safe verdicts:
+UNSUPPORTED (bare face) -> DANGER (worker under unsupported brow) -> NOT VERIFIED
+(support going in, not yet confirmed) -> SUPPORTED (mesh+bolts confirmed over the
+support_window). It mirrors what a *correct* run should look like; the real model
+on the demo clip stays at UNSUPPORTED because the face is bare the whole time.
 """
 
-def _obs(item_id, status, evidence):
-    return {"item_id": item_id, "status": status, "evidence": evidence}
+
+def _p(scene, activity="none", people=False, danger=False, mesh=False, bolts=False,
+       gss="none_visible", call="UNSUPPORTED", note=""):
+    return {"scene": scene, "activity": activity, "people_visible": people,
+            "person_in_danger": danger, "mesh_visible": mesh, "bolts_visible": bolts,
+            "ground_support_state": gss, "safety_call": call, "note": note}
 
 
 STUB_STEPS = [
-    {"narration": "Operator bars down loose rock at the face before any support.",
-     "current_activity": "p1",
-     "observations": [_obs("p1", "satisfied", "scaling bar knocking loose rock off the back")],
-     "safety_flags": [], "confidence": 0.8},
-    {"narration": "Crew hangs wire screen on the back and walls toward the face.",
-     "current_activity": "p2",
-     "observations": [_obs("p2", "in_progress", "screen being lifted to the back")],
-     "safety_flags": [], "confidence": 0.7},
-    {"narration": "A worker steps under the still-unbolted brow to pull the screen.",
-     "current_activity": "p2",
-     "observations": [_obs("p2", "satisfied", "back/wall screen tight to face")],
-     "safety_flags": [{"id": "S1", "severity": "high", "note": "person under unbolted brow"}],
-     "confidence": 0.6},
-    {"narration": "The worker is still under the unsupported brow while folding the screen over.",
-     "current_activity": "p3",
-     "observations": [_obs("p3", "satisfied", "screen wrapped around the brow")],
-     "safety_flags": [{"id": "S1", "severity": "high", "note": "person still under unbolted brow"}],
-     "confidence": 0.6},
-    {"narration": "Screen is pulled snug against both side walls.",
-     "current_activity": "p4",
-     "observations": [_obs("p4", "satisfied", "screen tight to side walls")],
-     "safety_flags": [], "confidence": 0.7},
-    {"narration": "Bolter installs the first row of bolts from the left wall across.",
-     "current_activity": "p5",
-     "observations": [_obs("p5", "in_progress", "bolter installing plates left to right")],
-     "safety_flags": [], "confidence": 0.7},
-    {"narration": "Bolting continues; top row of plates goes in near the back.",
-     "current_activity": "p6",
-     "observations": [_obs("p5", "satisfied", "row of bolts complete across face"),
-                      _obs("p6", "satisfied", "top row up near the back")],
-     "safety_flags": [], "confidence": 0.7},
-    {"narration": "Bottom screen bolts are secured down near the floor.",
-     "current_activity": "p7",
-     "observations": [_obs("p7", "satisfied", "bottom screen bolted near the floor")],
-     "safety_flags": [], "confidence": 0.7},
-    {"narration": "With the face supported, the drill boom moves in to drill the round.",
-     "current_activity": "p8",
-     "observations": [_obs("p8", "satisfied", "drilling only after screen and bolts in place")],
-     "safety_flags": [], "confidence": 0.8},
+    _p("Bare rock development face with survey marks and a muck pile; a parked boom.",
+       activity="none", note="No ground support visible; face is unsupported."),
+    _p("Operator scaling loose rock from the bare face before any support.",
+       activity="scaling", people=True, note="Scaling underway; face still unsupported."),
+    _p("A worker stands directly under the unsupported brow to reach the face.",
+       activity="screening", people=True, danger=True,
+       note="PERSON under unsupported rock — immediate hazard."),
+    _p("The worker is still under the unsupported brow while lifting mesh; no bolts yet.",
+       activity="screening", people=True, danger=True, mesh=True, bolts=False,
+       gss="none_visible", call="UNSUPPORTED",
+       note="PERSON still under unsupported rock; mesh going up but no bolts."),
+    _p("Mesh is up and the first bolts are going in; support is partial.",
+       activity="bolting", people=True, mesh=True, bolts=True,
+       gss="partial", call="PARTIAL", note="Partial support — not yet confirmed."),
+    _p("Mesh and a row of bolt plates are visible across the face.",
+       activity="bolting", mesh=True, bolts=True, gss="full", call="SUPPORTED",
+       note="Mesh and bolts visible."),
+    _p("Full grid of mesh and bolt plates covering the face.",
+       activity="bolting", mesh=True, bolts=True, gss="full", call="SUPPORTED",
+       note="Mesh and bolts visible across the face."),
+    _p("Face fully covered by mesh with a complete bolt pattern.",
+       activity="none", mesh=True, bolts=True, gss="full", call="SUPPORTED",
+       note="Mesh and full bolt pattern clearly visible."),
+    _p("Supported face: full mesh and bolt plates, no one in the danger zone.",
+       activity="none", mesh=True, bolts=True, gss="full", call="SUPPORTED",
+       note="Face supported; bolting complete."),
 ]
 
 

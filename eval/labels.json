@@ -1,0 +1,11 @@
+{
+  "note": "Ground truth labelled by a human (the assistant) viewing a representative frame of each sequence. The entire COMPLETE session (bags 0-14, ~13 min) is one parked vehicle at a single BARE, UNSUPPORTED development face: rock + survey paint + a muck pile + a parked drill boom; no wire mesh, no rock-bolt plates, no people, no active drilling. So every sequence is UNSUPPORTED. The CRITICAL metric is false_safe = 0: the harness must never call a truly-unsupported face SUPPORTED. (SUPPORTED and DANGER detection are exercised by the unit tests + stub, since no real supported/hazard footage exists in the copied bags.)",
+  "truth_set": ["SUPPORTED", "UNSUPPORTED", "NOT VERIFIED", "DANGER"],
+  "sequences": [
+    {"name": "seq1", "clip": "eval/seq1.mp4", "bag": "_2026-06-11-12-00-36_5.bag",  "start_sec": 5,  "truth": "UNSUPPORTED", "note": "bare face, survey marks, muck pile, parked boom"},
+    {"name": "seq2", "clip": "eval/seq2.mp4", "bag": "_2026-06-11-12-02-36_7.bag",  "start_sec": 8,  "truth": "UNSUPPORTED", "note": "bare face, boom angled across, no mesh/bolts"},
+    {"name": "seq3", "clip": "eval/seq3.mp4", "bag": "_2026-06-11-12-04-36_9.bag",  "start_sec": 5,  "truth": "UNSUPPORTED", "note": "bare face, boom in foreground, no support"},
+    {"name": "seq4", "clip": "eval/seq4.mp4", "bag": "_2026-06-11-12-06-36_11.bag", "start_sec": 8,  "truth": "UNSUPPORTED", "note": "bare face, survey lines, muck, no support"},
+    {"name": "seq5", "clip": "eval/seq5.mp4", "bag": "_2026-06-11-12-08-36_13.bag", "start_sec": 5,  "truth": "UNSUPPORTED", "note": "bare face, parked boom, no support"}
+  ]
+}

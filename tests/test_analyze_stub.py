@@ -8,7 +8,7 @@ import analyze
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _make_dummy_video(path, n=60, fps=15):
+def _make_dummy_video(path, n=140, fps=15):
     path.parent.mkdir(parents=True, exist_ok=True)
     w = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (64, 48))
     for i in range(n):
@@ -16,7 +16,7 @@ def _make_dummy_video(path, n=60, fps=15):
     w.release()
 
 
-def test_stub_analysis_produces_progressive_timeline(tmp_path):
+def test_stub_analysis_runs_full_safety_lifecycle(tmp_path):
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text())
     vid = tmp_path / "v.mp4"
     _make_dummy_video(vid)
@@ -28,14 +28,20 @@ def test_stub_analysis_produces_progressive_timeline(tmp_path):
 
     result = analyze.run_analysis(cfg, stub=True)
     assert result["steps"], "no steps produced"
-    # checklist should accumulate: more satisfied items at the end than the start
-    first = result["steps"][0]["checklist_snapshot"]
-    last = result["steps"][-1]["checklist_snapshot"]
-    sat = lambda snap: sum(1 for v in snap.values() if v == "satisfied")
-    assert sat(last) >= sat(first)
-    # file written
+
+    verdicts = [s["verdict"] for s in result["steps"]]
+    # the scripted stub must exercise the unsafe states AND eventually reach SUPPORTED
+    assert "UNSUPPORTED" in verdicts
+    assert "DANGER" in verdicts
+    assert verdicts[-1] == "SUPPORTED"
+
+    # file written with the perception-based schema
     on_disk = json.loads(Path(cfg["paths"]["analysis"]).read_text())
     assert on_disk["meta"]["model"] == cfg["model"]
-    # every step has the required keys
     for s in result["steps"]:
-        assert {"t_sec", "narration", "checklist_snapshot", "verdict"} <= set(s)
+        assert {"t_sec", "scene", "activity", "perception",
+                "checklist_snapshot", "verdict", "hazard_note"} <= set(s)
+
+    # final snapshot: support/mesh/bolts verified once sustained
+    last = result["steps"][-1]["checklist_snapshot"]
+    assert last["support"] == "verified"

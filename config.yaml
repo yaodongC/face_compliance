@@ -1,24 +1,32 @@
-# vLLM OpenAI-compatible endpoint serving nvidia/Cosmos-Reason2-2B
+# vLLM OpenAI-compatible endpoint. `model` is the served alias (see install.md),
+# so swapping the underlying VLM never requires a config change here.
 endpoint: "http://localhost:8000/v1"
-model: "cosmos-reason"
+model: "vlm"
 
 # Front RGB camera topic in the ROS1 bags
 camera_topic: "/sensing/front/rgb/image_raw/compressed"
 
 # Analysis sampling
 sampling_sec: 5.0       # run the VLM every N seconds of footage
-window_frames: 6        # frames per analysis window (temporal context)
-frame_max_width: 640    # downscale frames before sending to the VLM
+window_frames: 1        # frames per analysis window. 1 = single still: small VLMs
+                        # hallucinate MORE with multi-frame context, so default to 1.
+frame_max_width: 768    # downscale frames before sending to the VLM
 
-# Generation
-max_tokens: 1024
-temperature: 0.2
+# Generation (temperature 0 for deterministic single-pass perception)
+max_tokens: 420
+temperature: 0.0
 
-# Compliance debounce / clearing (tuned for noisy real-model output)
-confirm_satisfied: 1     # satisfied windows before a process item locks
-confirm_violation: 2     # consecutive violation windows before locking a violation
-confirm_clear: 2         # compliant windows before a locked violation clears
-min_severity: "med"      # min safety-flag severity that counts: low|med|high
+# Asymmetric K-vote consensus per frame: unanimous for SUPPORTED, any-vote for
+# hazards. votes=1 disables it. Votes are sampled at vote_temperature for diversity.
+votes: 3
+vote_temperature: 0.6
+
+# Fail-safe aggregation: SUPPORTED / a VERIFIED support item requires ALL of the
+# last `support_window` windows to agree; any UNSUPPORTED reading in the buffer
+# drags the verdict down. Larger = more conservative.
+support_window: 3
+hazard_confirm: 2       # a hazard (drilling/person) must appear in >=N windows
+                        # before DANGER fires, so one hallucinated frame can't alarm
 
 paths:
   regulation: "regulation.yaml"

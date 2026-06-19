@@ -1,5 +1,10 @@
-"""PyQt5 replay GUI: plays the extracted MP4 and overlays the synced
-narration, progressively-filling compliance checklist, and verdict banner."""
+"""PyQt5 replay GUI: plays the extracted MP4 and overlays the synced scene
+narration, fail-safe verification checklist, and safety verdict banner.
+
+The verdict and checklist are deliberately conservative: a small VLM cannot be
+trusted to certify life-safety, so the UI shows NOT VERIFIED by default and a
+prominent permanent disclaimer that this is an assistive demo, not a certified
+safety system."""
 from __future__ import annotations
 import argparse
 import json
@@ -9,9 +14,23 @@ import cv2
 import yaml
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-ICON = {"pending": "⬜", "in_progress": "\U0001f7e1",
-        "satisfied": "✅", "ok": "✅", "violation": "⛔"}
-BANNER = {"IN PROGRESS": "#b8860b", "AT-RISK": "#c0392b", "COMPLIANT": "#1e8449"}
+# Per-item icons. not_verified is the honest default (grey question), verified is
+# a green check, violation is a red stop.
+ICON = {"not_verified": "❓", "verified": "✅", "violation": "⛔"}
+ROW_COLOR = {"not_verified": "#777", "verified": "#1e8449", "violation": "#c0392b"}
+
+# Verdict banner colours. Only SUPPORTED is green; everything else is a warning.
+BANNER = {"DANGER": "#7b1113", "UNSUPPORTED": "#c0392b",
+          "NOT VERIFIED": "#b8860b", "SUPPORTED": "#1e8449"}
+SUBTITLE = {
+    "DANGER": "Hazard observed — clear the area",
+    "UNSUPPORTED": "No ground support verified — treat face as UNSUPPORTED",
+    "NOT VERIFIED": "Support not confirmed — human inspection required",
+    "SUPPORTED": "Mesh + bolts verified over time (assistive only — still verify)",
+}
+DISCLAIMER = ("⚠ ASSISTIVE DEMO — NOT A CERTIFIED SAFETY SYSTEM. A small vision model "
+              "can miss or hallucinate ground support. Never enter a face or skip a "
+              "physical inspection based on this display.")
 
 
 class Player(QtWidgets.QWidget):
@@ -29,40 +48,53 @@ class Player(QtWidgets.QWidget):
         self.timer.start(int(1000 / self.fps))
 
     def _build_ui(self):
-        self.setWindowTitle("Face Support Compliance — Cosmos-Reason2 / vLLM")
+        self.setWindowTitle("Face Support Safety Inspector — Cosmos-Reason2 / vLLM")
         self.video = QtWidgets.QLabel(alignment=QtCore.Qt.AlignCenter)
         self.video.setMinimumSize(720, 540)
         self.video.setStyleSheet("background:#111;")
-        self.banner = QtWidgets.QLabel("IN PROGRESS", alignment=QtCore.Qt.AlignCenter)
-        self.banner.setFixedHeight(54)
-        self.banner.setStyleSheet("color:white;font-size:22px;font-weight:bold;background:#b8860b;")
-        self.narration = QtWidgets.QLabel("", wordWrap=True)
-        self.narration.setStyleSheet("font-size:15px;padding:8px;")
-        self.narration.setMinimumHeight(70)
+
+        self.banner = QtWidgets.QLabel("NOT VERIFIED", alignment=QtCore.Qt.AlignCenter)
+        self.banner.setFixedHeight(58)
+        self.banner.setStyleSheet("color:white;font-size:24px;font-weight:bold;background:#b8860b;")
+        self.subtitle = QtWidgets.QLabel("", alignment=QtCore.Qt.AlignCenter)
+        self.subtitle.setStyleSheet("color:#222;font-size:13px;padding:2px;")
+
+        disclaimer = QtWidgets.QLabel(DISCLAIMER, wordWrap=True)
+        disclaimer.setStyleSheet("background:#222;color:#ffd24d;font-size:12px;padding:6px;")
+
+        self.scene_lbl = QtWidgets.QLabel("", wordWrap=True)
+        self.scene_lbl.setStyleSheet("font-size:14px;padding:6px;")
+        self.scene_lbl.setMinimumHeight(64)
+
         self.rows = {}
         checklist = QtWidgets.QVBoxLayout()
-        title = QtWidgets.QLabel("Face Support Compliance")
-        title.setStyleSheet("font-size:16px;font-weight:bold;padding:4px;")
+        title = QtWidgets.QLabel("Verification checklist (fail-safe)")
+        title.setStyleSheet("font-size:15px;font-weight:bold;padding:4px;")
         checklist.addWidget(title)
         for it in self.items:
-            row = QtWidgets.QLabel(f"{ICON['pending']}  {it['label']}")
+            row = QtWidgets.QLabel(f"{ICON['not_verified']}  {it['label']}")
             row.setWordWrap(True)
-            row.setStyleSheet("font-size:13px;padding:3px;")
+            row.setStyleSheet("font-size:13px;padding:3px;color:#777;")
             self.rows[it["id"]] = row
             checklist.addWidget(row)
         checklist.addStretch(1)
+
         right = QtWidgets.QVBoxLayout()
-        right.addWidget(QtWidgets.QLabel("<b>Narration</b>"))
-        right.addWidget(self.narration)
+        right.addWidget(QtWidgets.QLabel("<b>What the camera sees</b>"))
+        right.addWidget(self.scene_lbl)
         rc = QtWidgets.QWidget(); rc.setLayout(checklist)
         right.addWidget(rc, 1)
-        rightw = QtWidgets.QWidget(); rightw.setLayout(right); rightw.setFixedWidth(360)
+        rightw = QtWidgets.QWidget(); rightw.setLayout(right); rightw.setFixedWidth(380)
+
         top = QtWidgets.QHBoxLayout()
         top.addWidget(self.video, 1)
         top.addWidget(rightw)
+
         root = QtWidgets.QVBoxLayout(self)
         root.addWidget(self.banner)
+        root.addWidget(self.subtitle)
         root.addLayout(top, 1)
+        root.addWidget(disclaimer)
 
     def _current_step(self, t_sec):
         cur = self.steps[0] if self.steps else None
@@ -87,18 +119,27 @@ class Player(QtWidgets.QWidget):
         step = self._current_step(pos)
         if not step:
             return
-        self.narration.setText(step["narration"])
+        scene = step.get("scene", "")
+        act = step.get("activity", "none")
+        hazard = step.get("hazard_note", "")
+        txt = f"Activity: {act}\n{scene}"
+        if hazard:
+            txt += f"\n⛔ {hazard}"
+        self.scene_lbl.setText(txt)
+
         snap = step["checklist_snapshot"]
         for it in self.items:
-            st = snap.get(it["id"], "pending")
-            self.rows[it["id"]].setText(f"{ICON.get(st, '?')}  {it['label']}")
+            st = snap.get(it["id"], "not_verified")
+            self.rows[it["id"]].setText(f"{ICON.get(st, '❓')}  {it['label']}")
+            weight = "font-weight:bold;" if st in ("verified", "violation") else ""
             self.rows[it["id"]].setStyleSheet(
-                "font-size:13px;padding:3px;"
-                + ("color:#c0392b;font-weight:bold;" if st == "violation" else ""))
+                f"font-size:13px;padding:3px;color:{ROW_COLOR.get(st, '#777')};{weight}")
+
         v = step["verdict"]
         self.banner.setText(v)
         self.banner.setStyleSheet(
-            f"color:white;font-size:22px;font-weight:bold;background:{BANNER.get(v, '#555')};")
+            f"color:white;font-size:24px;font-weight:bold;background:{BANNER.get(v, '#555')};")
+        self.subtitle.setText(SUBTITLE.get(v, ""))
 
 
 def main():
@@ -115,7 +156,7 @@ def main():
         return
     app = QtWidgets.QApplication(sys.argv)
     w = Player(cfg)
-    w.resize(1120, 640)
+    w.resize(1180, 720)
     w.show()
     sys.exit(app.exec_())
 
