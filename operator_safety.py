@@ -160,6 +160,33 @@ def annotate(frame, person_bbox=None, verdict="NO_PERSON", action="",
     return img
 
 
+def classify_sessions(events, gap=20.0, motion_thresh=MOTION_FRAC_THRESH):
+    """Group operator-in-front detections into reload SESSIONS and judge each by the
+    boom state AT ENTRY. The operator MUST enter the zone to reload meshes/bolts -
+    that is normal. It is non-compliant ONLY if the boom was still operating when he
+    entered (drilling not stopped first). One verdict per session, not per frame.
+    """
+    evs = sorted([e for e in events if e.get("person_bbox")], key=lambda x: x["cycle_sec"])
+    sessions, cur = [], []
+    for e in evs:
+        if cur and e["cycle_sec"] - cur[-1]["cycle_sec"] > gap:
+            sessions.append(cur); cur = []
+        cur.append(e)
+    if cur:
+        sessions.append(cur)
+    out = []
+    for s in sessions:
+        entry = s[0]
+        entry_moving = entry.get("arm_motion", 0.0) > motion_thresh
+        out.append({"start": s[0]["cycle_sec"], "end": s[-1]["cycle_sec"],
+                    "entry_motion": entry.get("arm_motion", 0.0),
+                    "entry_boom_moving": entry_moving,
+                    "verdict": "NON_COMPLIANT_ENTRY" if entry_moving else "SAFE_RELOAD",
+                    "action": entry.get("action", ""), "n_frames": len(s),
+                    "person_bbox": entry.get("person_bbox")})
+    return out
+
+
 def classify(person_in_front: bool, arm_motion_value: float,
              motion_thresh: float = MOTION_FRAC_THRESH) -> str:
     """Fail-safe operator-zone verdict (arm_motion_value should be the

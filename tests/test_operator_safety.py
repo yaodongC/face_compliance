@@ -61,3 +61,17 @@ def test_coverage_state_partial_vs_full():
     # one small panel -> NOT SUPPORTED (partial)
     part = [{"bbox": [0.3, 0.2, 0.44, 0.8], "installed_at": 1}]
     assert coverage_state(part, 10)["verdict"] == "NOT SUPPORTED"
+
+
+def test_classify_sessions_entry_based():
+    from operator_safety import classify_sessions
+    evs = [
+        {"cycle_sec": 100, "arm_motion": 0.10, "person_bbox": [0.3, 0.5, 0.4, 0.7], "action": "a"},
+        {"cycle_sec": 108, "arm_motion": 0.001, "person_bbox": [0.3, 0.5, 0.4, 0.7], "action": "a"},
+        {"cycle_sec": 300, "arm_motion": 0.001, "person_bbox": [0.5, 0.5, 0.6, 0.7], "action": "b"},
+        {"cycle_sec": 308, "arm_motion": 0.05, "person_bbox": [0.5, 0.5, 0.6, 0.7], "action": "b"},
+    ]
+    sess = classify_sessions(evs, gap=20)
+    assert len(sess) == 2
+    assert sess[0]["verdict"] == "NON_COMPLIANT_ENTRY"   # entered while boom moving
+    assert sess[1]["verdict"] == "SAFE_RELOAD"           # entered while boom stopped

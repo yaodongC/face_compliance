@@ -61,26 +61,23 @@ def main():
                            source="face_harness")
                 prev = v
 
-    # 2) operator events -> danger incidents, near-misses, screen installs
+    # 2) operator RELOAD SESSIONS: the operator must enter the zone to reload - that
+    #    is normal. Non-compliant ONLY if the boom was still operating at ENTRY.
     if Path(a.operator).exists():
+        from operator_safety import classify_sessions
         ops = json.loads(Path(a.operator).read_text())["events"]
-        danger = EL.IncidentDebouncer(lg, EL.OPERATOR_IN_ZONE, EL.VIOLATION,
-                                      source="operator_safety", min_frames=1)
-        for e in sorted(ops, key=lambda x: x["cycle_sec"]):
-            cs = e["cycle_sec"]
-            is_danger = e["verdict"] == "DANGER"
-            danger.update(is_danger, cs,
-                          description=f"operator in front while boom MOVING "
-                                      f"(motion {e.get('arm_motion')}): {e.get('action','')}",
-                          bbox=e.get("person_bbox"),
-                          evidence=f"data/operator_frames/op_{int(cs):05d}.png")
-            if e["verdict"] == "OK_LOADING" and e.get("person_bbox"):
-                act = (e.get("action") or "").lower()
-                if any(k in act for k in ("screen", "mesh", "bolt", "fit", "load", "install")):
-                    lg.log(EL.SCREEN_INSTALLED, cs, severity=EL.INFO,
-                           description=f"operator installing (drill stopped): {e.get('action','')}",
-                           bbox=e.get("person_bbox"), source="operator_safety",
-                           evidence=f"data/operator_frames/op_{int(cs):05d}.png")
+        for s in classify_sessions(ops):
+            ev = f"data/operator_frames/op_{int(s['start']):05d}.png"
+            if s["verdict"] == "NON_COMPLIANT_ENTRY":
+                lg.log(EL.OPERATOR_IN_ZONE, s["end"], severity=EL.VIOLATION,
+                       description=f"operator ENTERED danger zone while boom STILL OPERATING "
+                                   f"(entry motion {s['entry_motion']:.3f}): {s['action']}",
+                       bbox=s["person_bbox"], evidence=ev, source="operator_safety",
+                       started_at=s["start"], duration_sec=round(s["end"] - s["start"], 1))
+            else:
+                lg.log(EL.SCREEN_INSTALLED, s["start"], severity=EL.INFO,
+                       description=f"operator reloaded with boom STOPPED (compliant entry): {s['action']}",
+                       bbox=s["person_bbox"], evidence=ev, source="operator_safety")
 
         # 3) coverage milestones from accumulated install sites
         prog, covered = build_coverage([e for e in ops if e.get("person_bbox")], cols=10)
