@@ -17,6 +17,6 @@ support_window: 3
 hazard_confirm: 2
 paths:
   regulation: regulation.yaml
-  video: data/front_camera.mp4
+  video: data/demo.mp4
   frame_index: data/frames.idx
   analysis: data/analysis.json

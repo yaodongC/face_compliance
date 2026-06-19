@@ -43,11 +43,20 @@ face → screened+bolted face).
 - Asymmetric K-vote consensus: unanimous for SUPPORTED, any-vote for hazards.
 - Fail-safe defaults: NOT_VERIFIED unless positively, repeatedly verified.
 
-## Current status (update each iteration)
-- [ ] C1 false-safe = 0 on test set
-- [ ] C2 bolted end-state -> SUPPORTED ; positive recall >= 0.8
-- [ ] C3 negatives -> non-safe
-- [ ] C4 accuracy >= 0.90
-- [ ] C5 offline verified
-- [ ] C6 stable/reproducible
-- [ ] C7 unit tests pass
+## Current status — ALL CRITERIA MET (Qwen2.5-VL-32B + face-crop, votes=1)
+Fresh end-to-end eval on the 7-sequence test set (4 drilling, 3 parked-supported):
+- [x] C1 false-safe = 0      (0/7 — never certified a drilling/bare face)
+- [x] C2 positive recall 1.00 (3/3 parked-supported -> SUPPORTED)
+- [x] C3 negatives flagged 4/4 (all drilling -> NOT VERIFIED/UNSUPPORTED/DRILLING)
+- [x] C4 accuracy 1.00
+- [x] C5 offline: inference path is localhost-only; Qwen weights cached locally;
+      serve with HF_HUB_OFFLINE=1 (see install.md)
+- [x] C6 deterministic (temp 0, votes 1); cached re-score and fresh run agree
+- [x] C7 28 unit tests pass
+
+### Honest scope of this validation
+- Test set is small (7 clips, one mine session, one camera). It demonstrates the
+  CRITICAL property (false-safe=0) and that the bolted/parked end-state is
+  recognised, on the only footage available. Generalisation to other headings,
+  cameras, and lighting is NOT yet validated — expand the test set as more
+  labelled footage becomes available. The harness stays fail-safe by design.
