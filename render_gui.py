@@ -51,15 +51,32 @@ def _wrap(text, width):
     return lines
 
 
-def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None):
+SEV_COLOR = {"INFO": (200, 200, 200), "WARNING": (40, 170, 220),
+             "VIOLATION": (44, 44, 220), "CRITICAL": (40, 20, 200)}
+
+
+def _load_events(path):
+    if not path or not Path(path).exists():
+        return []
+    out = []
+    for line in Path(path).read_text().splitlines():
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return sorted(out, key=lambda e: e.get("cycle_sec", 0))
+
+
+def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None, events_path=None):
     data = json.loads(Path(analysis).read_text())
     steps = sorted(data["steps"], key=lambda s: s["t_sec"])
     items = data["meta"]["items"]
     index = _load_index(index_path)
+    events = _load_events(events_path)
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or fps
 
-    W, H = 1320, 640
+    W, H = 1320, 760
     vid_w, vid_h = 860, 484
     panel_x = vid_w + 20
     writer = cv2.VideoWriter(out, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
@@ -102,10 +119,9 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None):
         canvas[92:92 + vid_h, 10:10 + vid_w] = fr
 
         # cycle clock
-        if index is not None:
-            csec = index.get(fno, t)
-            cv2.putText(canvas, f"cycle {int(csec)//60:02d}:{int(csec)%60:02d}", (16, 92 + vid_h + 28),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 60), 2, cv2.LINE_AA)
+        csec = index.get(fno, t) if index else t
+        cv2.putText(canvas, f"cycle {int(csec)//60:02d}:{int(csec)%60:02d}", (16, 92 + vid_h + 28),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 60), 2, cv2.LINE_AA)
 
         # checklist panel
         cv2.putText(canvas, "Face-support checklist", (panel_x, 110),
@@ -131,9 +147,24 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None):
             cv2.putText(canvas, ln, (panel_x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (180, 200, 220), 1, cv2.LINE_AA)
             y += 20
 
+        # event-log panel (external memory) -- events up to the current cycle time,
+        # ordered by time, most recent at the bottom
+        ey0 = 92 + vid_h + 44
+        cv2.line(canvas, (10, ey0 - 16), (W - 10, ey0 - 16), (90, 90, 90), 1)
+        cv2.putText(canvas, "EVENT LOG (external memory) - ordered by time", (12, ey0),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 2, cv2.LINE_AA)
+        shown = [e for e in events if e.get("cycle_sec", 0) <= csec + 0.1]
+        for i, e in enumerate(shown[-7:]):
+            cs = int(e.get("cycle_sec", 0))
+            col = SEV_COLOR.get(e.get("severity", "INFO"), (200, 200, 200))
+            line = (f"{cs//60:02d}:{cs%60:02d}  [{e.get('severity','INFO'):9}] "
+                    f"{e.get('type',''):20} {e.get('description','')[:70]}")
+            cv2.putText(canvas, line, (14, ey0 + 24 + i * 20), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.42, col, 1, cv2.LINE_AA)
+
         # disclaimer footer
         cv2.putText(canvas, "ASSISTIVE DEMO - NOT A CERTIFIED SAFETY SYSTEM. Always physically verify.",
-                    (12, H - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (60, 200, 255), 1, cv2.LINE_AA)
+                    (12, H - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (60, 200, 255), 1, cv2.LINE_AA)
         writer.write(canvas)
         fno += 1
     cap.release()
@@ -151,6 +182,8 @@ def main():
     ap.add_argument("--fps", type=float, default=15.0)
     ap.add_argument("--face-crop-config", default="config.yaml",
                     help="config to read the face_crop box from (for the overlay)")
+    ap.add_argument("--events", default="data/event_log.jsonl",
+                    help="event-log JSONL to display in the GUI panel")
     a = ap.parse_args()
     video, analysis = a.video, a.analysis
     face_crop = None
@@ -160,7 +193,7 @@ def main():
         video = video or cfg["paths"]["video"]
         analysis = analysis or cfg["paths"]["analysis"]
         face_crop = cfg.get("face_crop")
-    render(video, analysis, a.out, a.index, a.fps, face_crop)
+    render(video, analysis, a.out, a.index, a.fps, face_crop, a.events)
 
 
 if __name__ == "__main__":
