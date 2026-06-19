@@ -160,6 +160,50 @@ def annotate(frame, person_bbox=None, verdict="NO_PERSON", action="",
     return img
 
 
+# face band the screens are bolted onto (clamp grounding to here): [x0,y0,x1,y1]
+FACE_BAND = (0.15, 0.10, 0.90, 0.85)
+_SCREEN_SEND_W = 1000
+
+
+def detect_screen(img, cfg, *, session=None):
+    """VLM-ground the wire-mesh SCREEN being installed (most visible during the
+    install, before it blends into the face). Returns a fractional bbox clamped to
+    the face band. APPROXIMATE - a bolted mesh cannot be localised precisely."""
+    h, w = img.shape[:2]
+    rh = int(h * _SCREEN_SEND_W / w)
+    c = cv2.resize(img, (_SCREEN_SEND_W, rh))
+    ok, buf = cv2.imencode(".jpg", c, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    b64 = base64.b64encode(buf.tobytes()).decode()
+    prompt = (f"Underground mine face, image is {_SCREEN_SEND_W}x{rh} px. A worker/boom is "
+              "installing a WIRE-MESH SCREEN panel on the rock face. Give the pixel bounding box "
+              "of the screen panel being installed/handled right now. JSON only: "
+              '{"screen_visible":bool,"screen_bbox_px":[x0,y0,x1,y1]}')
+    msgs = [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]
+    sess = session or requests
+    r = sess.post(f"{cfg['endpoint']}/chat/completions",
+                  json={"model": cfg["model"], "messages": msgs, "max_tokens": 120,
+                        "temperature": 0.0}, timeout=120).json()
+    txt = r["choices"][0]["message"]["content"]
+    m = re.search(r"\{.*\}", txt, re.S)
+    try:
+        d = json.loads(m.group(0)) if m else {}
+    except json.JSONDecodeError:
+        d = {}
+    bb = d.get("screen_bbox_px")
+    if not (isinstance(bb, (list, tuple)) and len(bb) == 4):
+        return {"screen_visible": False, "screen_bbox": None}
+    frac = [bb[0] / _SCREEN_SEND_W, bb[1] / rh, bb[2] / _SCREEN_SEND_W, bb[3] / rh]
+    fx0, fy0, fx1, fy1 = FACE_BAND
+    cl = [min(max(frac[0], fx0), fx1), min(max(frac[1], fy0), fy1),
+          min(max(frac[2], fx0), fx1), min(max(frac[3], fy0), fy1)]
+    if cl[2] - cl[0] < 0.03 or cl[3] - cl[1] < 0.03:   # degenerate
+        return {"screen_visible": False, "screen_bbox": None}
+    return {"screen_visible": bool(d.get("screen_visible", True)),
+            "screen_bbox": [round(x, 3) for x in cl]}
+
+
 def classify_sessions(events, gap=20.0, motion_thresh=MOTION_FRAC_THRESH):
     """Group operator-in-front detections into reload SESSIONS and judge each by the
     boom state AT ENTRY. The operator MUST enter the zone to reload meshes/bolts -
