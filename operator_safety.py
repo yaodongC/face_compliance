@@ -64,6 +64,39 @@ def arm_motion(prev_img, img, person_bbox=None, pad=12) -> float:
     return float(diff.mean())
 
 
+def hi_vis_orange_fraction(img, bbox) -> float:
+    """Fraction of bbox pixels that are hi-vis ORANGE (worker vest). The booms /
+    jumbo are YELLOW, not orange, so this rejects boom-arm false positives that the
+    VLM mislabels as an operator."""
+    if not bbox:
+        return 0.0
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = bbox
+    crop = img[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)]
+    if crop.size == 0:
+        return 0.0
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (3, 110, 110), (20, 255, 255))
+    return float((mask > 0).mean())
+
+
+def _bbox_ok(bbox, min_area=0.004, max_area=0.25, max_aspect_wh=1.6) -> bool:
+    """Reject degenerate / non-person bboxes (thin boom lines, whole-frame, etc.).
+    People are roughly upright, so width/height should not be very large."""
+    if not bbox:
+        return False
+    x0, y0, x1, y1 = bbox
+    bw, bh = x1 - x0, y1 - y0
+    if bw <= 0 or bh <= 0:
+        return False
+    area = bw * bh
+    return (min_area <= area <= max_area) and (bw / bh <= max_aspect_wh)
+
+
+# minimum hi-vis-orange fraction in the bbox to accept a person (classical gate)
+MIN_ORANGE = 0.015
+
+
 def detect_person(img, cfg, *, session=None) -> dict:
     h, w = img.shape[:2]
     c = cv2.resize(img, (1000, int(h * 1000 / w)))
@@ -85,9 +118,16 @@ def detect_person(img, cfg, *, session=None) -> dict:
     bb = d.get("person_bbox")
     if not (isinstance(bb, (list, tuple)) and len(bb) == 4 and all(isinstance(x, (int, float)) for x in bb)):
         bb = None
-    return {"person_in_front": bool(d.get("person_in_front")),
-            "hi_vis": bool(d.get("hi_vis")), "person_bbox": bb,
-            "action": str(d.get("action", "") or ""), "note": d.get("note", "")}
+    vlm_person = bool(d.get("person_in_front"))
+    # CLASSICAL GATE: a real operator must be hi-vis ORANGE in a person-shaped bbox.
+    # This rejects the booms/equipment the VLM mislabels as an operator.
+    orange = hi_vis_orange_fraction(img, bb)
+    confirmed = vlm_person and _bbox_ok(bb) and orange >= MIN_ORANGE
+    return {"person_in_front": confirmed,
+            "vlm_person": vlm_person, "orange_frac": round(orange, 3),
+            "hi_vis": bool(d.get("hi_vis")), "person_bbox": bb if confirmed else None,
+            "action": str(d.get("action", "") or "") if confirmed else "",
+            "note": d.get("note", "")}
 
 
 def annotate(frame, person_bbox=None, verdict="NO_PERSON", action="",
