@@ -67,12 +67,20 @@ def _load_events(path):
     return sorted(out, key=lambda e: e.get("cycle_sec", 0))
 
 
-def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None, events_path=None):
+def _load_meshes(path):
+    if not path or not Path(path).exists():
+        return []
+    return json.loads(Path(path).read_text()).get("meshes", [])
+
+
+def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
+           events_path=None, meshes_path=None):
     data = json.loads(Path(analysis).read_text())
     steps = sorted(data["steps"], key=lambda s: s["t_sec"])
     items = data["meta"]["items"]
     index = _load_index(index_path)
     events = _load_events(events_path)
+    meshes = _load_meshes(meshes_path)
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or fps
 
@@ -96,6 +104,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None, even
         if not ok:
             break
         t = fno / vfps
+        csec = index.get(fno, t) if index else t
         step = cur_step(t)
         v = step["verdict"]
         canvas = np.full((H, W, 3), 30, dtype=np.uint8)
@@ -116,10 +125,19 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None, even
                           (int(x1 * vid_w), int(y1 * vid_h)), (0, 220, 220), 2)
             cv2.putText(fr, "model view: end face", (int(x0 * vid_w) + 4, int(y0 * vid_h) + 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 220), 1, cv2.LINE_AA)
+        # persistent installed-mesh panels: each mesh keeps its own colour and stays
+        # drawn once installed (the coverage building up panel-by-panel)
+        for m in meshes:
+            if m.get("installed_at", 0) <= csec + 0.1:
+                bx0, by0, bx1, by1 = m["bbox"]
+                col = tuple(int(c) for c in m["color"])
+                cv2.rectangle(fr, (int(bx0 * vid_w), int(by0 * vid_h)),
+                              (int(bx1 * vid_w), int(by1 * vid_h)), col, 2)
+                cv2.putText(fr, m["label"], (int(bx0 * vid_w) + 3, int(by0 * vid_h) + 18),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 2, cv2.LINE_AA)
         canvas[92:92 + vid_h, 10:10 + vid_w] = fr
 
         # cycle clock
-        csec = index.get(fno, t) if index else t
         cv2.putText(canvas, f"cycle {int(csec)//60:02d}:{int(csec)%60:02d}", (16, 92 + vid_h + 28),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 60), 2, cv2.LINE_AA)
 
@@ -184,6 +202,8 @@ def main():
                     help="config to read the face_crop box from (for the overlay)")
     ap.add_argument("--events", default="data/event_log.jsonl",
                     help="event-log JSONL to display in the GUI panel")
+    ap.add_argument("--meshes", default="data/mesh_events.json",
+                    help="tracked mesh panels to draw persistently on the video")
     a = ap.parse_args()
     video, analysis = a.video, a.analysis
     face_crop = None
@@ -193,7 +213,7 @@ def main():
         video = video or cfg["paths"]["video"]
         analysis = analysis or cfg["paths"]["analysis"]
         face_crop = cfg.get("face_crop")
-    render(video, analysis, a.out, a.index, a.fps, face_crop, a.events)
+    render(video, analysis, a.out, a.index, a.fps, face_crop, a.events, a.meshes)
 
 
 if __name__ == "__main__":
