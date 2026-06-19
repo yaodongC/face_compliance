@@ -1,58 +1,102 @@
-# Face-Support Compliance VLM Harness (safety-critical)
+# LoopX Safety AI-Agent (VLM) — underground face-support monitor
 
-Watches the front camera of a drill jumbo in an underground heading and decides
-whether the **face is supported to compliance**, using a local VLM
-(Qwen2.5-VL-32B served by vLLM on the Jetson Thor). Fully offline at inference.
+A safety-critical harness that watches the front camera of a drill jumbo in an
+underground heading and monitors **ground-support compliance** during the
+screen-and-bolt cycle, using a local VLM (Qwen2.5-VL-32B served by vLLM on the
+Jetson Thor). Fully offline at inference. Reads from a **recorded MP4 or a live
+RTSP camera** — same code path.
 
-## What it decides
-- **SUPPORTED** (compliant): the end face is screened + bolted, drilling is
-  complete, and the drill booms are parked — the safe rest-state.
-- **DRILLING / UNSUPPORTED / DANGER**: active face drilling, an unscreened face,
-  or a person under unsupported ground — not the supported state.
-- **NOT VERIFIED**: can't confirm — treat as unsafe, human inspection required.
+## What it reports
+- **Operator safety** (the real-time, reliable signal): **CLEAR** vs **DANGER** —
+  DANGER when a worker enters the danger zone in front of the jumbo *while the boom
+  is still moving* (drilling not stopped before entry).
+- **Mesh installation**: a running **count of screens installed** over the cycle,
+  with an install timeline and a danger-zone-entry timeline.
+- **Event log**: a durable, append-only timeline of entries, violations and mesh
+  installs — the system's external memory (the VLM is stateless).
+- It **never auto-certifies "supported."** Full mesh coverage can't be measured
+  reliably from this footage, so coverage stays *assistive* and defers to on-site
+  inspection.
 
-## Design (why it is built this way)
-Hard-won lessons, encoded in the harness:
-1. **The arched back/walls are mesh-bolted in every frame**, so "is there mesh"
-   does NOT indicate compliance. The reliable, safety-meaningful signal is the
-   **end FACE + drill state** (screened? drilling? booms parked?).
-2. **Resolution is a safety parameter.** Mesh/bolt/drill detail is invisible at
-   low resolution and full-frame views confuse the model — so we send a
-   **high-res crop of the end-face/centre region** (`face_crop` in config).
-3. **Fail-safe aggregation.** SUPPORTED requires the face screened in *every*
-   window of a rolling buffer (the reliable signal) + at least one "booms parked"
-   sighting (booms that are drilling are never parked) + no sustained drilling.
-   Everything defaults to NOT VERIFIED. A single noisy frame can never certify
-   support. The result: it is hard to earn SUPPORTED, easy to fall to unsafe.
-4. **Grounded perception, decision in code.** The VLM only reports what it sees
-   (`face_screened, drill_active, arms_parked, person_in_danger`); compliance is
-   decided by `compliance.py`, never by the model's own verdict.
+## Design (hard-won, encoded in the harness)
+1. **Operator danger is entry-based.** The operator *must* enter the zone to reload
+   mesh + bolts — that is normal. It's non-compliant only if the boom was still
+   moving at entry. `operator_safety.classify_sessions` judges each reload visit by
+   the boom motion at entry (`boom_motion_thresh` in config; data clusters ≤0.023
+   stopped vs ≥0.046 moving, so 0.035 sits in the gap).
+2. **Person-confirmed, not colour-confirmed.** Operators are detected by the VLM
+   confirming a *person*, then gated by a classical hi-vis-**orange** check (workers
+   are orange, booms are yellow) — colour alone false-positives on equipment.
+3. **Mesh count by temporal episode, not position.** One mesh is bolted over a
+   sustained burst of visits (the operator drifts across its width); a *new* mesh
+   starts only after a long gap to reload a fresh screen. The number of screens is
+   **emergent** (depends on face size) — never assumed. Per-panel localisation is
+   not reliable (a bolted mesh blends into the face), so we count, not outline.
+4. **Resolution is a safety parameter.** Detail is invisible at low resolution and
+   full-frame views confuse the model — perception runs on a high-res face crop
+   (`face_crop`).
+5. **Grounded perception, decision in code.** The VLM only reports what it sees;
+   compliance/danger is decided in code, never by the model's own verdict. Defaults
+   are the *unsafe/unverified* answer.
 
-## Validation — meets SUCCESS_CRITERIA.md
-`python3 eval.py` scores the harness against hand-labelled ground truth
-(`eval/labels.json`). Latest run (Qwen2.5-VL-32B, 7 clips from 7 bags):
-- **C1 false-safe = 0** (never certified a drilling/bare face) — the critical one
-- **C2 recall = 1.00** (all parked-supported clips → SUPPORTED)
-- **C3 negatives 4/4**, **C4 accuracy 1.00**, **C7 28 unit tests pass**
-- **C5 offline** (localhost-only inference, weights cached), **C6 deterministic**
-
-## Pipeline
-```bash
-# 1. serve the model (offline once cached): see ../install.md
-# 2. extract footage to MP4:
-python3 extract_video.py --bags ../<bag>.bag ... --duration 220
-# 3. analyze -> data/analysis.json (real model; or --stub for no server):
-python3 analyze.py
-# 4. replay GUI (video + scene + fail-safe checklist + verdict banner):
-python3 gui.py
-# 5. score against ground truth:
-python3 eval.py
+## Inputs — configurable (file or live RTSP)
+`live_source.py` is one frame source for both:
+```python
+open_source("data/full_cycle.mp4")                      # recorded file
+open_source("rtsp://root:root@10.20.30.40:554/cam0_0")  # live camera (nvh264dec, HW decode)
+```
+Set the live input in **config.yaml**:
+```yaml
+input: rtsp://root:root@10.20.30.40:554/cam0_0   # or a file path, e.g. data/full_cycle.mp4
 ```
 
+## Run it
+```bash
+# serve the model (offline once weights are cached): see ../install.md
+# --- LIVE monitor (reads config.yaml `input:` — file or RTSP) ---
+python3 live_gui.py                      # headless: writes data/live_frame.png + optional --out
+python3 live_gui.py --display            # on a display (DISPLAY=:0)
+python3 live_gui.py --input data/full_cycle.mp4 --seconds 60 --out data/live.mp4
+
+# --- OFFLINE pipeline on recorded bags ---
+python3 extract_video.py --bags ../<bag>.bag ...          # bags -> MP4 + index
+python3 make_2x.py                                        # smooth 2x real-time video of the full cycle
+python3 scan_operator.py --bags 0-56                      # full-session operator scan -> data/operator_events.json
+python3 build_event_log.py                               # -> data/event_log.jsonl (external memory)
+python3 render_gui.py --video data/full_cycle.mp4 \
+  --analysis data/full_cycle_analysis.json --index data/full_cycle.idx \
+  --events data/event_log.jsonl --operator data/operator_events.json \
+  --out data/full_cycle_gui.mp4                          # render the monitor to MP4
+```
+
+## Validation
+- **In-domain** (`python3 eval.py` vs `eval/labels.json`): false-safe = 0 (never
+  certified a drilling/bare face), recall 1.00 on the labelled clips.
+- **Out-of-domain fail-safe** (`python3 office_test.py`): pointed at a live **office**
+  camera, the harness produced **0 false-safe, 0 false-alarm, 0 operator false
+  positives** — the VLM described it accurately ("an office environment with a
+  desk, cables, and equipment") and refused to invent mine observations. The
+  fail-safe design holds on completely out-of-domain input.
+- Unit tests: `python3 -m pytest -q` (45).
+
+## Components
+| file | role |
+|---|---|
+| `live_source.py` | unified frame source: MP4 file or RTSP camera (HW decode, reconnect) |
+| `live_gui.py` | **live** monitor — configurable input, real-time perception, GUI |
+| `render_gui.py` / `gui_theme.py` | **offline** monitor renderer (`compose()`) + shared theme |
+| `vlm_client.py` | VLM face perception (grounded) |
+| `operator_safety.py` | operator detection + entry-based danger classification |
+| `scan_operator.py` | full-session operator scan → `operator_events.json` |
+| `coverage.py` | mesh-install counting (temporal episodes) |
+| `event_log.py` / `build_event_log.py` | external-memory event log |
+| `office_test.py` | out-of-domain false-alarm / hallucination test |
+| `config.yaml` | input source, `face_crop`, `boom_motion_thresh`, endpoint |
+
 ## Safety notes
-- ASSISTIVE demo, NOT a certified safety system. SUPPORTED is advisory — always
-  physically verify ground support before anyone approaches a face.
-- Validation is on one mine session / one camera. The fail-safe design holds by
-  construction, but generalisation to other headings/cameras is not yet proven —
-  expand `eval/labels.json` as more labelled footage becomes available.
-- Tests: `python3 -m pytest -v` (28).
+- **ASSISTIVE demo, NOT a certified safety system.** Coverage is advisory and the
+  harness never auto-certifies support — always physically verify ground support
+  before anyone approaches a face.
+- Per-mesh localisation and exact counts are estimates; the reliable output is the
+  operator-danger detection. Validation is on one mine session / one camera —
+  generalisation to other headings is not yet proven.
