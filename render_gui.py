@@ -185,7 +185,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
 
         # ---- header
         d.rounded_rectangle([M, 30, M + 12, 42], radius=3, fill=AMBER)
-        d.text((M + 24, 27), "FACE-SUPPORT MONITOR", font=f_title, fill=INK)
+        d.text((M + 24, 27), "LoopX Safety AI-Agent (VLM)", font=f_title, fill=INK)
         cs = int(csec)
         _right(d, W - M, 30, f"CYCLE {cs//60:02d}:{cs%60:02d}", f_monob, INK)
         _right(d, W - M - 132, 31, "● REC", f_small, DANGER if (fno // 8) % 2 else (120, 40, 40))
