@@ -37,6 +37,32 @@ def _col_span(bbox, cols, reach_frac=0.6):
     return range(max(0, c0), min(cols, c1 + 1))
 
 
+def segment_coverage(events, n=4, face_x=FACE_X):
+    """Per-segment install time: the first time the operator works in each of n
+    face segments (left->right). Returns a list of n times (or None). Per-mesh
+    bboxes are not reliable, so coverage is tracked as n coarse face segments."""
+    fx0, fx1 = face_x
+    wseg = (fx1 - fx0) / n
+    times = [None] * n
+    for e in sorted([e for e in events if e.get("person_bbox")], key=lambda x: x["cycle_sec"]):
+        bb = e["person_bbox"]
+        cx = min(max((bb[0] + bb[2]) / 2.0, fx0), fx1 - 1e-6)
+        seg = min(max(int((cx - fx0) / wseg), 0), n - 1)
+        if times[seg] is None:
+            times[seg] = e["cycle_sec"]
+    return times
+
+
+def segment_state(seg_times, t):
+    """Compliance from the n face segments at time t. COMPLIANT only when ALL
+    segments are covered (entire face covered)."""
+    covered = [(st is not None and st <= t + 0.1) for st in seg_times]
+    n = len(seg_times) or 1
+    full = all(covered)
+    return {"covered": covered, "fraction": sum(covered) / n, "full": full,
+            "verdict": "COMPLIANT" if full else "NOT SUPPORTED"}
+
+
 def coverage_state(meshes, t, face_x=FACE_X, min_overlap=0.02):
     """Compliance from INSTALLED MESH PANELS only (booms-parked is NOT used).
     COMPLIANT iff the installed panels cover the ENTIRE face band with OVERLAPS

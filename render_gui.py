@@ -16,7 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
-from coverage import coverage_state
+from coverage import segment_coverage, segment_state, FACE_X
 
 # BGR colours. Compliance is COVERAGE-driven: COMPLIANT only when the WHOLE face is
 # covered by OVERLAPPING bolted meshes; partial coverage is NOT supported.
@@ -79,21 +79,22 @@ def _load_events(path):
     return sorted(out, key=lambda e: e.get("cycle_sec", 0))
 
 
-def _load_meshes(path):
-    if not path or not Path(path).exists():
-        return []
-    return json.loads(Path(path).read_text()).get("meshes", [])
+N_SEG = 4
 
 
 def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
-           events_path=None, meshes_path=None):
+           events_path=None, operator_path=None):
     data = json.loads(Path(analysis).read_text())
     steps = sorted(data["steps"], key=lambda s: s["t_sec"])
-    items = data["meta"]["items"]
     index = _load_index(index_path)
     events = _load_events(events_path)
-    meshes = _load_meshes(meshes_path)
     dwins = _danger_windows(events)
+    # 4-segment face coverage from operator install sites (per-mesh boxes are not
+    # reliable, so coverage is tracked as N coarse face segments)
+    ops = []
+    if operator_path and Path(operator_path).exists():
+        ops = json.loads(Path(operator_path).read_text()).get("events", [])
+    seg_times = segment_coverage(ops, n=N_SEG)
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or fps
 
@@ -119,9 +120,9 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         t = fno / vfps
         csec = index.get(fno, t) if index else t
         step = cur_step(t)
-        cov = coverage_state(meshes, csec)
+        seg = segment_state(seg_times, csec)
         danger = _danger_active(dwins, csec)
-        v = "DANGER" if danger else cov["verdict"]
+        v = "DANGER" if danger else seg["verdict"]
         canvas = np.full((H, W, 3), 30, dtype=np.uint8)
 
         # banner
@@ -140,16 +141,21 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
                           (int(x1 * vid_w), int(y1 * vid_h)), (0, 220, 220), 2)
             cv2.putText(fr, "model view: end face", (int(x0 * vid_w) + 4, int(y0 * vid_h) + 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 220), 1, cv2.LINE_AA)
-        # persistent installed-mesh panels: each mesh keeps its own colour and stays
-        # drawn once installed (the coverage building up panel-by-panel)
-        for m in meshes:
-            if m.get("installed_at", 0) <= csec + 0.1:
-                bx0, by0, bx1, by1 = m["bbox"]
-                col = tuple(int(c) for c in m["color"])
-                cv2.rectangle(fr, (int(bx0 * vid_w), int(by0 * vid_h)),
-                              (int(bx1 * vid_w), int(by1 * vid_h)), col, 2)
-                cv2.putText(fr, m["label"], (int(bx0 * vid_w) + 3, int(by0 * vid_h) + 18),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 2, cv2.LINE_AA)
+        # 4-segment face-coverage bar (no per-mesh boxes: a bolted mesh blends into
+        # the face and cannot be localised; we show which quarters are covered)
+        fx0, fx1 = FACE_X
+        seg_w = (fx1 - fx0) / N_SEG
+        bar_y = vid_h - 34
+        cv2.putText(fr, "face coverage", (int(fx0 * vid_w), bar_y - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (230, 230, 230), 1, cv2.LINE_AA)
+        for i in range(N_SEG):
+            sx0 = int((fx0 + i * seg_w) * vid_w)
+            sx1 = int((fx0 + (i + 1) * seg_w) * vid_w)
+            c = (70, 170, 70) if seg["covered"][i] else (70, 70, 70)
+            cv2.rectangle(fr, (sx0, bar_y), (sx1, vid_h - 8), c, -1)
+            cv2.rectangle(fr, (sx0, bar_y), (sx1, vid_h - 8), (220, 220, 220), 1)
+            cv2.putText(fr, f"Q{i+1}", (sx0 + 6, vid_h - 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
         canvas[92:92 + vid_h, 10:10 + vid_w] = fr
 
         # cycle clock
@@ -160,8 +166,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         cv2.putText(canvas, "Compliance: full overlapping mesh coverage", (panel_x, 110),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 2, cv2.LINE_AA)
         cov_items = [
-            ("Entire end face covered by mesh", "verified" if cov["full"] else "not_verified"),
-            ("Meshes overlap (no gaps)", "verified" if cov["overlaps"] else "not_verified"),
+            ("Entire end face covered (all 4 segments)", "verified" if seg["full"] else "not_verified"),
             ("Operator clear of moving boom", "violation" if danger else "not_verified"),
         ]
         y = 150
@@ -173,7 +178,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
                 cv2.putText(canvas, ln, (panel_x + 44, y + i * 22), cv2.FONT_HERSHEY_SIMPLEX,
                             0.5, c, 1, cv2.LINE_AA)
             y += 26 + 22 * max(1, len(_wrap(label, 30)))
-        cv2.putText(canvas, f"face coverage: {cov['fraction']*100:.0f}%  ({cov['n_panels']} meshes)",
+        cv2.putText(canvas, f"face coverage: {sum(seg['covered'])}/{N_SEG} segments",
                     (panel_x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 60), 2, cv2.LINE_AA)
         y += 28
 
@@ -223,8 +228,8 @@ def main():
                     help="config to read the face_crop box from (for the overlay)")
     ap.add_argument("--events", default="data/event_log.jsonl",
                     help="event-log JSONL to display in the GUI panel")
-    ap.add_argument("--meshes", default="data/mesh_events.json",
-                    help="tracked mesh panels to draw persistently on the video")
+    ap.add_argument("--operator", default="data/operator_events.json",
+                    help="operator events -> 4-segment face-coverage bar")
     a = ap.parse_args()
     video, analysis = a.video, a.analysis
     face_crop = None
@@ -234,7 +239,7 @@ def main():
         video = video or cfg["paths"]["video"]
         analysis = analysis or cfg["paths"]["analysis"]
         face_crop = cfg.get("face_crop")
-    render(video, analysis, a.out, a.index, a.fps, face_crop, a.events, a.meshes)
+    render(video, analysis, a.out, a.index, a.fps, face_crop, a.events, a.operator)
 
 
 if __name__ == "__main__":

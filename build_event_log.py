@@ -79,18 +79,18 @@ def main():
                        description=f"operator reloaded with boom STOPPED (compliant entry): {s['action']}",
                        bbox=s["person_bbox"], evidence=ev, source="operator_safety")
 
-        # 3) coverage milestones from accumulated install sites
-        prog, covered = build_coverage([e for e in ops if e.get("person_bbox")], cols=10)
-        last_cov = 0.0
-        for p in prog:
-            if p["coverage"] > last_cov:
-                lg.log(EL.SCREEN_INSTALLED, p["cycle_sec"], severity=EL.INFO,
-                       description=f"face coverage advanced to {p['coverage']*100:.0f}%",
-                       source="coverage", coverage=p["coverage"])
-                last_cov = p["coverage"]
-        if covered and sum(covered) / len(covered) >= 0.9:
-            lg.log(EL.COVERAGE_FULL, prog[-1]["cycle_sec"], severity=EL.INFO,
-                   description="face fully covered by overlapping screens (compliant coverage)",
+        # 3) face-SEGMENT coverage milestones (4 segments; per-mesh boxes are not
+        #    reliable, so coverage is tracked as 4 coarse face quarters)
+        from coverage import segment_coverage
+        seg_times = segment_coverage(ops, n=4)
+        for i, st in sorted(enumerate(seg_times), key=lambda x: (x[1] is None, x[1] or 0)):
+            if st is not None:
+                lg.log(EL.SCREEN_INSTALLED, st, severity=EL.INFO,
+                       description=f"face segment Q{i+1} of 4 covered", source="coverage",
+                       segment=i + 1)
+        if all(st is not None for st in seg_times):
+            lg.log(EL.COVERAGE_FULL, max(t for t in seg_times if t is not None),
+                   severity=EL.INFO, description="entire face covered (all 4 segments)",
                    source="coverage")
 
     # report
