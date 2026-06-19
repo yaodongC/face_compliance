@@ -77,16 +77,27 @@ def test_classify_sessions_entry_based():
     assert sess[1]["verdict"] == "SAFE_RELOAD"           # entered while boom stopped
 
 
-def test_mesh_installs_counts_distinct_sustained_locations():
+def test_mesh_installs_counts_temporal_episodes_not_drift():
     from coverage import mesh_installs, mesh_count
     evs = [
-        {"cycle_sec": 10, "person_bbox": [0.25, 0.5, 0.35, 0.7]},  # loc A
-        {"cycle_sec": 20, "person_bbox": [0.26, 0.5, 0.36, 0.7]},  # loc A again -> mesh 1
-        {"cycle_sec": 30, "person_bbox": [0.55, 0.5, 0.65, 0.7]},  # loc B (single, transient)
-        {"cycle_sec": 40, "person_bbox": [0.25, 0.5, 0.35, 0.7]},  # back to A (same mesh)
-        {"cycle_sec": 50, "person_bbox": [0.56, 0.5, 0.66, 0.7]},  # loc B again -> mesh 2
+        # mesh 1: a burst, operator DRIFTS across the mesh width (0.30 -> 0.50)
+        {"cycle_sec": 10, "person_bbox": [0.25, 0.5, 0.35, 0.7]},
+        {"cycle_sec": 18, "person_bbox": [0.30, 0.5, 0.40, 0.7]},
+        {"cycle_sec": 26, "person_bbox": [0.45, 0.5, 0.55, 0.7]},
+        # big gap (reload a fresh screen) -> mesh 2
+        {"cycle_sec": 320, "person_bbox": [0.55, 0.5, 0.65, 0.7]},
+        {"cycle_sec": 328, "person_bbox": [0.50, 0.5, 0.60, 0.7]},
+        {"cycle_sec": 336, "person_bbox": [0.60, 0.5, 0.70, 0.7]},
     ]
-    ins = mesh_installs(evs, sep=0.10, min_hits=2)
-    assert len(ins) == 2                 # two distinct sustained locations
-    assert mesh_count(evs, 25) == 1      # only loc A counted by t=25
-    assert mesh_count(evs, 99) == 2
+    ins = mesh_installs(evs, gap=240, min_events=3)
+    assert len(ins) == 2                 # drift within a mesh does NOT add a count
+    assert mesh_count(evs, 100) == 1     # only mesh 1 by t=100
+    assert mesh_count(evs, 999) == 2
+
+
+def test_mesh_installs_filters_brief_blip():
+    from coverage import mesh_installs
+    evs = [{"cycle_sec": 10 + i * 8, "person_bbox": [0.3, 0.5, 0.4, 0.7]} for i in range(4)]
+    evs += [{"cycle_sec": 600, "person_bbox": [0.3, 0.5, 0.4, 0.7]},      # 2-event blip
+            {"cycle_sec": 608, "person_bbox": [0.3, 0.5, 0.4, 0.7]}]
+    assert len(mesh_installs(evs, gap=240, min_events=3)) == 1   # blip filtered
