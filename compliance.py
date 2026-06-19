@@ -42,20 +42,6 @@ def load_regulation(path) -> list[ChecklistItem]:
     return [ChecklistItem(it["id"], it.get("label", it["id"])) for it in data["items"]]
 
 
-def _window_state(p: dict) -> str:
-    """Classify a single perception window. Priority: danger > drilling >
-    supported > unsupported > uncertain."""
-    if p.get("person_in_danger"):
-        return "danger"
-    if p.get("drill_active"):
-        return "drilling"
-    if p.get("face_screened") and p.get("arms_parked"):
-        return "supported"
-    if not p.get("face_screened"):
-        return "unsupported"
-    return "uncertain"
-
-
 class SafetyTracker:
     ITEM_IDS = ("face_screen", "no_active_drilling", "arms_parked", "worker_safe")
 
@@ -83,20 +69,22 @@ class SafetyTracker:
     def _count(self, pred) -> int:
         return sum(1 for p in self._buf if pred(p))
 
-    def _states(self) -> list[str]:
-        return [_window_state(p) for p in self._buf]
-
     def verdict(self) -> str:
-        states = self._states()
+        """Worst-case biased. SUPPORTED needs the face screened in EVERY window
+        (the reliable signal) plus at least one 'booms parked' sighting (the noisy
+        but safety-critical at-rest signal) and no sustained drilling. A single
+        spurious drill frame is tolerated via hazard_confirm."""
         person_n = self._count(lambda p: p.get("person_in_danger"))
         drill_n = self._count(lambda p: p.get("drill_active"))
+        screened_all = self._all(lambda p: p.get("face_screened"))
+        parked_seen = self._count(lambda p: p.get("arms_parked")) >= 1
         if person_n >= self.hazard_confirm:
             return DANGER
-        if "unsupported" in states:
-            return UNSUPPORTED
         if drill_n >= self.hazard_confirm:
             return DRILLING
-        if self._full() and all(s == "supported" for s in states):
+        if self._full() and not screened_all:
+            return UNSUPPORTED          # face bare in at least one window
+        if self._full() and screened_all and parked_seen:
             return SUPPORTED
         return NOT_VERIFIED_VERDICT
 
@@ -106,7 +94,7 @@ class SafetyTracker:
         snap = {iid: NOT_VERIFIED for iid in self.ITEM_IDS}
         if self._all(lambda p: p.get("face_screened")):
             snap["face_screen"] = VERIFIED
-        if self._all(lambda p: p.get("arms_parked")):
+        if self._count(lambda p: p.get("arms_parked")) >= 1 and drill_n < self.hazard_confirm:
             snap["arms_parked"] = VERIFIED
         if drill_n >= self.hazard_confirm:
             snap["no_active_drilling"] = VIOLATION

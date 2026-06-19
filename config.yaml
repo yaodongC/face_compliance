@@ -1,39 +1,22 @@
-# vLLM OpenAI-compatible endpoint. `model` is the served alias (see install.md),
-# so swapping the underlying VLM never requires a config change here.
-endpoint: "http://localhost:8000/v1"
-model: "vlm"
-
-# Front RGB camera topic in the ROS1 bags
-camera_topic: "/sensing/front/rgb/image_raw/compressed"
-
-# Analysis sampling
-sampling_sec: 5.0       # run the VLM every N seconds of footage
-window_frames: 1        # frames per analysis window. 1 = single still: small VLMs
-                        # hallucinate MORE with multi-frame context, so default to 1.
-frame_max_width: 1200   # width sent to the VLM. Mesh/bolts/drill state are fine
-                        # detail; too low hides them, full-frame confuses the model.
-# Crop to the END-FACE/centre region [x0,y0,x1,y1] (fractions) before sending, so
-# the model judges the FACE + drill state, not the always-meshed arched back.
-face_crop: [0.22, 0.20, 0.78, 0.92]
-
-# Generation (temperature 0 for deterministic single-pass perception)
+endpoint: http://localhost:8000/v1
+model: vlm
+camera_topic: /sensing/front/rgb/image_raw/compressed
+sampling_sec: 5.0
+window_frames: 1
+frame_max_width: 1200
+face_crop:
+- 0.22
+- 0.2
+- 0.78
+- 0.92
 max_tokens: 420
 temperature: 0.0
-
-# Asymmetric K-vote consensus per frame: unanimous for SUPPORTED, any-vote for
-# hazards. votes=1 disables it. Votes are sampled at vote_temperature for diversity.
-votes: 3
+votes: 1
 vote_temperature: 0.6
-
-# Fail-safe aggregation: SUPPORTED / a VERIFIED support item requires ALL of the
-# last `support_window` windows to agree; any UNSUPPORTED reading in the buffer
-# drags the verdict down. Larger = more conservative.
 support_window: 3
-hazard_confirm: 2       # a hazard (drilling/person) must appear in >=N windows
-                        # before DANGER fires, so one hallucinated frame can't alarm
-
+hazard_confirm: 2
 paths:
-  regulation: "regulation.yaml"
-  video: "data/front_camera.mp4"
-  frame_index: "data/frames.idx"
-  analysis: "data/analysis.json"
+  regulation: regulation.yaml
+  video: data/front_camera.mp4
+  frame_index: data/frames.idx
+  analysis: data/analysis.json
