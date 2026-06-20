@@ -16,7 +16,10 @@ DEFAULTS = {
         "danger_roi": [0.45, 1.0, 0.20, 0.80],   # [y0,y1,x0,x1] fractions
         "motion_px_thresh": 25,                   # per-pixel abs-diff
         "boom_motion_thresh": 0.035,              # fraction of ROI px changed => boom MOVING
-        "min_orange": 0.015,                      # min hi-vis-orange fraction to accept a person
+        "min_orange": 0.06,                       # min hi-vis-orange fraction to accept a person
+        # (0.015 was far too weak: boom hallucinations measure ~0.02-0.04 orange and passed it,
+        #  causing a persistent false DANGER at cyc=1497. Real vests measure 0.09-0.27; 0.06
+        #  rejects the yellow-boom hallucinations while keeping real workers with margin.)
         "orange_hsv_lo": [3, 110, 110],
         "orange_hsv_hi": [20, 255, 255],
         "bbox": {"min_area": 0.004, "max_area": 0.25, "max_aspect": 1.6},
@@ -26,6 +29,14 @@ DEFAULTS = {
         "person_send_w": 1000,                    # px width sent to the VLM for person detection
         "person_max_tokens": 140,                 # VLM response budget for person detection
         "screen_max_tokens": 120,                 # VLM response budget for screen grounding
+        # IMU machine-motion fusion (physical "is the machine drilling/booming" signal;
+        # replaces the confounded vision frame-diff that fired on the operator/dust/lighting).
+        "imu_topic": "/sensing/front/livox/imu",
+        "imu_active_thr": 0.013,                  # accel-mag std over window => machine MOVING
+        "imu_win_sec": 3.0,                       # +/- window (s) to measure machine motion
+        # operator temporal persistence (rejects the VLM hallucinating a worker onto the boom)
+        "person_persist_n": 6,                    # frames sampled around a detection to confirm
+        "person_persist_thr": 0.6,                # fraction that must confirm => operator PRESENT
     },
     "coverage": {
         "face_x": [0.20, 0.85],                   # face width band (fractions)
@@ -60,6 +71,14 @@ def validate(p):
             raise ValueError(f"config params: {key} must be a positive number, got {src[key]!r}")
     if not (_num(o["min_orange"]) and o["min_orange"] >= 0):
         raise ValueError(f"config params.operator.min_orange must be >= 0, got {o['min_orange']!r}")
+    # IMU fusion knobs: positive thresholds; persistence fraction in [0,1]
+    for key in ("imu_active_thr", "imu_win_sec", "person_persist_n"):
+        if not (_num(o[key]) and o[key] > 0):
+            raise ValueError(f"config params.operator.{key} must be a positive number, got {o[key]!r}")
+    if not (_num(o["person_persist_thr"]) and 0 < o["person_persist_thr"] <= 1):
+        raise ValueError(f"config params.operator.person_persist_thr must be in (0,1], got {o['person_persist_thr']!r}")
+    if not (isinstance(o["imu_topic"], str) and o["imu_topic"]):
+        raise ValueError(f"config params.operator.imu_topic must be a non-empty string, got {o['imu_topic']!r}")
     if not (_num(c["min_overlap"]) and 0 <= c["min_overlap"] < 1):
         raise ValueError(f"config params.coverage.min_overlap must be in [0,1), got {c['min_overlap']!r}")
     # fractions in [0,1]

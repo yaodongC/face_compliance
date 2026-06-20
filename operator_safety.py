@@ -28,7 +28,7 @@ from rule_config import RULES
 from rules_engine import decide
 
 # this feature extractor is face-support-specific: it needs these verdict tables
-for _t in ("operator_entry", "operator_live"):
+for _t in ("operator_entry", "operator_live", "operator_zone"):
     if _t not in RULES:
         raise RuntimeError(f"SAFETY: active task bundle has no '{_t}' rules table (required by operator_safety)")
 
@@ -41,6 +41,12 @@ MOTION_PX_THRESH = _OP["motion_px_thresh"]      # per-pixel abs-diff threshold
 MOTION_FRAC_THRESH = _OP["boom_motion_thresh"]
 _ORANGE_LO = tuple(_OP["orange_hsv_lo"])
 _ORANGE_HI = tuple(_OP["orange_hsv_hi"])
+# IMU machine-motion fusion + operator persistence (see params.operator)
+IMU_TOPIC = _OP["imu_topic"]
+IMU_ACTIVE_THR = _OP["imu_active_thr"]      # accel-mag std above which the machine is MOVING
+IMU_WIN_SEC = _OP["imu_win_sec"]            # +/- window (s) used to measure machine motion
+PERSON_PERSIST_N = _OP["person_persist_n"]  # frames sampled around a detection to confirm
+PERSON_PERSIST_THR = _OP["person_persist_thr"]  # fraction that must confirm => operator PRESENT
 
 # externalized to prompts/face_support.yaml (config, not code)
 PERSON_PROMPT = PROMPTS["person"]
@@ -229,9 +235,15 @@ def classify_sessions(events, gap=_OP["session_gap"], motion_thresh=MOTION_FRAC_
     out = []
     for s in sessions:
         entry = s[0]
-        entry_moving = entry.get("arm_motion", 0.0) > motion_thresh
+        # "boom moving at entry": prefer the PHYSICAL IMU machine-motion (new scans store
+        # `machine_active`); fall back to the legacy vision arm_motion for old data/tests.
+        if "machine_active" in entry:
+            entry_moving = bool(entry["machine_active"])
+        else:
+            entry_moving = entry.get("arm_motion", 0.0) > motion_thresh
         out.append({"start": s[0]["cycle_sec"], "end": s[-1]["cycle_sec"],
                     "entry_motion": entry.get("arm_motion", 0.0),
+                    "entry_imu": entry.get("imu_std"),
                     "entry_boom_moving": entry_moving,
                     "verdict": decide(RULES["operator_entry"], {"boom_moving_at_entry": entry_moving}),
                     "action": entry.get("action", ""), "n_frames": len(s),
@@ -242,7 +254,57 @@ def classify_sessions(events, gap=_OP["session_gap"], motion_thresh=MOTION_FRAC_
 def classify(person_in_front: bool, arm_motion_value: float,
              motion_thresh: float = MOTION_FRAC_THRESH) -> str:
     """Fail-safe operator-zone verdict (arm_motion_value should be the
-    person-masked motion). Verdict mapping lives in rules/face_support.yaml."""
+    person-masked motion). Verdict mapping lives in rules/face_support.yaml.
+
+    LEGACY vision-only path. The vision frame-diff `arm_motion_value` is confounded -- it
+    fires on the operator walking / dust / lighting, not just the boom (validated: 14/17 of
+    its DANGERs were machine-quiet false positives). Prefer classify_zone() with the IMU."""
     moving = arm_motion_value > motion_thresh
     return decide(RULES["operator_live"],
                   {"person_in_front": bool(person_in_front), "boom_moving": bool(moving)})
+
+
+def machine_motion(accel_xyz) -> float:
+    """Std of accelerometer-magnitude over a window = the jumbo's vibration energy.
+
+    This is the PHYSICAL "is the machine drilling / booming" signal. Unlike the vision
+    frame-diff it cannot be faked by the operator walking into frame, by dust/water, or by
+    lighting changes -- those move pixels but not the chassis. Measured on the front Livox
+    IMU: idle ~0.005, active drilling/boom ~0.03+ (clean gap, see ARM_MOTION_TASK.md).
+
+    accel_xyz: array-like (N,3) of linear_acceleration samples in the +/-IMU_WIN_SEC window.
+    """
+    a = np.asarray(accel_xyz, dtype=float)
+    if a.ndim != 2 or a.shape[0] < 2 or a.shape[1] != 3:
+        return 0.0
+    return float(np.linalg.norm(a, axis=1).std())
+
+
+def machine_active(accel_xyz, thr: float = IMU_ACTIVE_THR) -> bool:
+    """True if the machine is physically running (drilling/booming) over the window."""
+    return machine_motion(accel_xyz) > thr
+
+
+def operator_present(persist_frac: float, thr: float = PERSON_PERSIST_THR):
+    """Temporal-persistence gate for the VLM person detection. A real worker is confirmed in
+    nearly every nearby frame (~12/12 in data); a boom-hallucination flickers (1-4/8). Returns
+    (present, seen): present = confirmed in >= thr of frames; seen = confirmed in any frame."""
+    present = persist_frac >= thr
+    seen = persist_frac > 0.0
+    return present, seen
+
+
+def classify_zone(operator_is_present: bool, operator_seen: bool, machine_is_active: bool) -> str:
+    """Tiered, fail-safe operator-zone verdict fusing a PERSISTENT operator detection with the
+    PHYSICAL machine-motion (IMU) signal -- replacing the confounded vision frame-diff.
+
+      DANGER  : persistent operator in front AND machine physically running
+      OK_LOADING: persistent operator, machine verifiably stopped (the safe reload case)
+      REVIEW  : machine running but presence only a flicker -> human audit (no false alarm,
+                no silent miss)
+      NO_PERSON: otherwise
+    Verdict mapping lives in rules/operator_zone (editable, auditable)."""
+    return decide(RULES["operator_zone"], {
+        "operator_present": bool(operator_is_present),
+        "operator_seen": bool(operator_seen),
+        "machine_active": bool(machine_is_active)})

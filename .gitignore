@@ -5,3 +5,4 @@ __pycache__/
 eval/*.mp4
 eval/*.idx
 eval/*.analysis.json
+*.log

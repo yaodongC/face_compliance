@@ -28,6 +28,11 @@ def test_face_support_tables_reproduce_current_mappings():
     assert decide(RULES["operator_live"], {"person_in_front": True, "boom_moving": True}) == "DANGER"
     assert decide(RULES["operator_live"], {"person_in_front": True, "boom_moving": False}) == "OK_LOADING"
     assert decide(RULES["operator_live"], {"person_in_front": False, "boom_moving": True}) == "NO_PERSON"
+    # IMU-fused tiered operator-zone table
+    assert decide(RULES["operator_zone"], {"operator_present": True, "operator_seen": True, "machine_active": True}) == "DANGER"
+    assert decide(RULES["operator_zone"], {"operator_present": True, "operator_seen": True, "machine_active": False}) == "OK_LOADING"
+    assert decide(RULES["operator_zone"], {"operator_present": False, "operator_seen": True, "machine_active": True}) == "REVIEW"
+    assert decide(RULES["operator_zone"], {"operator_present": False, "operator_seen": False, "machine_active": False}) == "NO_PERSON"
     assert decide(RULES["coverage_overlap"], {"full": True, "overlaps": True}) == "COMPLIANT"
     assert decide(RULES["coverage_overlap"], {"full": True, "overlaps": False}) == "NOT SUPPORTED"
     assert decide(RULES["coverage_full"], {"full": True}) == "COMPLIANT"

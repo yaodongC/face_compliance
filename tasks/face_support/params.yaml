@@ -3,7 +3,7 @@ operator:
   danger_roi: [0.45, 1.0, 0.20, 0.80]
   motion_px_thresh: 25
   boom_motion_thresh: 0.035
-  min_orange: 0.015
+  min_orange: 0.06          # hi-vis vest gate: boom hallucinations ~0.02-0.04, real vests 0.09-0.27
   orange_hsv_lo: [3, 110, 110]
   orange_hsv_hi: [20, 255, 255]
   bbox: {min_area: 0.004, max_area: 0.25, max_aspect: 1.6}
@@ -13,6 +13,14 @@ operator:
   person_send_w: 1000
   person_max_tokens: 140
   screen_max_tokens: 120
+  # IMU machine-motion fusion (replaces the confounded vision frame-diff for "boom moving").
+  # Front Livox IMU: machine idle ~0.005 accel-std, drilling/booming ~0.03+. Physical signal,
+  # immune to the operator walking / dust / lighting that produced the vision false positives.
+  imu_topic: /sensing/front/livox/imu
+  imu_active_thr: 0.013
+  imu_win_sec: 3.0
+  person_persist_n: 6        # frames sampled around a detection to confirm a real operator
+  person_persist_thr: 0.6    # fraction that must confirm person_in_front to count as PRESENT
 coverage:
   face_x: [0.20, 0.85]
   mesh_gap: 240

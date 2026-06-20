@@ -1,5 +1,7 @@
 import numpy as np
-from operator_safety import classify, arm_motion, MOTION_FRAC_THRESH
+from operator_safety import (classify, arm_motion, MOTION_FRAC_THRESH,
+                             machine_motion, machine_active, operator_present,
+                             classify_zone, IMU_ACTIVE_THR)
 
 
 def test_classify_danger_person_and_moving():
@@ -29,6 +31,53 @@ def test_arm_motion_high_for_changed_frames():
     a = np.zeros((120, 200, 3), dtype=np.uint8)
     b = np.full((120, 200, 3), 255, dtype=np.uint8)  # whole frame flips
     assert arm_motion(a, b) > 0.5
+
+
+def test_machine_motion_zero_for_still_machine():
+    # an idle machine: accelerometer reads steady gravity, tiny noise
+    still = np.tile([0.0, 0.0, 1.0], (200, 1)) + np.random.randn(200, 3) * 0.001
+    assert machine_motion(still) < IMU_ACTIVE_THR
+
+
+def test_machine_motion_high_for_vibrating_machine():
+    # drilling: strong high-frequency acceleration about gravity
+    t = np.linspace(0, 1, 200)
+    vib = np.stack([0.05 * np.sin(2 * np.pi * 40 * t),
+                    0.05 * np.cos(2 * np.pi * 40 * t),
+                    1.0 + 0.05 * np.sin(2 * np.pi * 55 * t)], axis=1)
+    assert machine_motion(vib) > IMU_ACTIVE_THR
+    assert machine_active(vib)
+    assert not machine_active(np.tile([0.0, 0.0, 1.0], (200, 1)))
+
+
+def test_machine_motion_handles_degenerate_input():
+    assert machine_motion([]) == 0.0
+    assert machine_motion([[0, 0, 1]]) == 0.0          # single sample -> 0
+
+
+def test_operator_present_persistence_gate():
+    # a real operator confirmed in ~all frames is PRESENT; a flickering hallucination is not
+    assert operator_present(12 / 12) == (True, True)
+    assert operator_present(4 / 8) == (False, True)    # flicker -> seen but not present
+    assert operator_present(0.0) == (False, False)
+
+
+def test_classify_zone_tiers():
+    # persistent operator + machine running -> DANGER (the real hazard)
+    assert classify_zone(True, True, True) == "DANGER"
+    # persistent operator, machine verifiably stopped -> safe reload
+    assert classify_zone(True, True, False) == "OK_LOADING"
+    # machine running but presence only a flicker -> REVIEW, not a false alarm
+    assert classify_zone(False, True, True) == "REVIEW"
+    # flicker + machine stopped, or nothing -> NO_PERSON
+    assert classify_zone(False, True, False) == "NO_PERSON"
+    assert classify_zone(False, False, False) == "NO_PERSON"
+
+
+def test_classify_zone_imu_vetoes_vision_style_false_positive():
+    # the cyc=2225 case: vision cried DANGER, but machine quiet + (real) operator present
+    # -> the fused verdict is the safe OK_LOADING, not DANGER
+    assert classify_zone(operator_is_present=True, operator_seen=True, machine_is_active=False) == "OK_LOADING"
 
 
 def test_bbox_ok_rejects_thin_horizontal_boom():
