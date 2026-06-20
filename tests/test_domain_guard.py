@@ -45,3 +45,9 @@ def test_failsafe_abstains_on_error_or_unparseable():
     assert domain_guard.in_domain(FRAME, CFG, session=_Sess("not json"), spec=SPEC)["in_domain"] is False
     # missing the key also abstains (fail-safe default False)
     assert domain_guard.in_domain(FRAME, CFG, session=_Sess('{"reason": "?"}'), spec=SPEC)["in_domain"] is False
+
+
+def test_misconfigured_enabled_spec_abstains_not_crashes():
+    # enabled but no 'question' -> abstain (fail-safe), never a KeyError crash
+    r = domain_guard.in_domain(FRAME, CFG, spec={"enabled": True})
+    assert r["in_domain"] is False and r["checked"] is True

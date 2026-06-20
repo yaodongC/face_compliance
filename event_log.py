@@ -35,6 +35,7 @@ NEAR_MISS = "near_miss"
 NON_COMPLIANT = "non_compliant_operation"
 ACCIDENT = "accident"
 STATE_CHANGE = "state_change"
+DOMAIN_ABSTAIN = "domain_abstain"                 # OOD guard suspended monitoring
 
 
 class EventLogger:

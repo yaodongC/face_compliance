@@ -53,19 +53,24 @@ def main():
     if Path(a.operator).exists():
         from operator_safety import classify_sessions
         from coverage import mesh_installs
+        from rule_config import RULES
+        from rules_engine import decide_traced
         ops = json.loads(Path(a.operator).read_text())["events"]
         for s in classify_sessions(ops):
             ev = f"data/operator_frames/op_{int(s['start']):05d}.png"
+            # provenance: which rule row produced this verdict (audit trail)
+            _, ridx = decide_traced(RULES["operator_entry"], {"boom_moving_at_entry": s["entry_boom_moving"]})
+            rule = {"table": "operator_entry", "index": ridx}
             if s["verdict"] == "NON_COMPLIANT_ENTRY":
                 lg.log(EL.OPERATOR_IN_ZONE, s["end"], severity=EL.VIOLATION,
                        description=f"operator entered danger zone while boom MOVING "
                                    f"(entry motion {s['entry_motion']:.3f})",
                        bbox=s["person_bbox"], evidence=ev, source="operator_safety",
-                       started_at=s["start"], duration_sec=round(s["end"] - s["start"], 1))
+                       rule=rule, started_at=s["start"], duration_sec=round(s["end"] - s["start"], 1))
             else:
                 lg.log(EL.OPERATOR_IN_ZONE, s["start"], severity=EL.INFO,
                        description="operator entered danger zone to reload — boom stopped",
-                       bbox=s["person_bbox"], evidence=ev, source="operator_safety")
+                       bbox=s["person_bbox"], evidence=ev, source="operator_safety", rule=rule)
         # mesh-install milestones (a new mesh = a new TEMPORAL install episode)
         for k, ins in enumerate(mesh_installs(ops)):
             lg.log(EL.SCREEN_INSTALLED, ins["time"], severity=EL.INFO,

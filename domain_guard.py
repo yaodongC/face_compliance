@@ -21,7 +21,12 @@ from task import task_dir
 
 def load_spec(task: str | None = None) -> dict:
     p = task_dir(task) / "domain.yaml"
-    return yaml.safe_load(p.read_text()) if p.exists() else {"enabled": False}
+    spec = yaml.safe_load(p.read_text()) if p.exists() else {"enabled": False}
+    if spec.get("enabled"):                 # validate LOUDLY at startup when enabled
+        q = spec.get("question")
+        if not (isinstance(q, str) and q.strip()):
+            raise RuntimeError(f"SAFETY: domain guard enabled in {p} but 'question' is missing/empty")
+    return spec
 
 
 SPEC = load_spec()
@@ -33,6 +38,8 @@ def in_domain(frame, cfg, *, session=None, spec=None) -> dict:
     spec = SPEC if spec is None else spec
     if not spec.get("enabled"):
         return {"in_domain": True, "checked": False, "reason": "guard disabled"}
+    if not spec.get("question"):            # misconfigured spec passed directly -> abstain, never crash
+        return {"in_domain": False, "checked": True, "reason": "guard misconfigured (no question) -> abstain"}
     h, w = frame.shape[:2]
     sw = int(spec.get("send_w", 768))
     c = cv2.resize(frame, (sw, int(h * sw / w)))

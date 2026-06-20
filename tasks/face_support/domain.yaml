@@ -1,5 +1,11 @@
-# Out-of-domain GUARD. enabled:false keeps current behaviour. Set true to make an
-# out-of-domain frame (office, vehicle, surface) ABSTAIN instead of being judged.
+# Out-of-domain GUARD. enabled:false keeps current behaviour. When true, an
+# out-of-domain frame (office, vehicle, surface) ABSTAINS instead of being judged.
+#
+# BEFORE enabling in production: this guard is itself a VLM call (not free; ~doubles
+# per-tick latency) and CAN wrongly reject a real mine frame -> a silent monitoring
+# gap. Validate its false-reject rate on labelled in-domain footage first, and note
+# the accepted rate here. Abstain periods are logged (domain_abstain events) so gaps
+# are auditable.
 enabled: false
 send_w: 768
 question: >-

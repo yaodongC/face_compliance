@@ -47,6 +47,7 @@ class LiveState:
         self.frame = None
         self.activity = "Assessing face support"
         self.ops, self.installs, self.entries, self.dwins, self.events = [], [], [], [], []
+        self.abstaining = False
         self.lg = EL.EventLogger(events_path, reset=True)
 
 
@@ -64,10 +65,23 @@ def perception_worker(state, cfg, t0, every, stop):
         # judging it. Disabled by default -> no VLM call, behaviour unchanged.
         dom = domain_guard.in_domain(frame, cfg, session=sess)
         if not dom["in_domain"]:
+            prev = frame                      # keep the motion baseline current so a
+            #                                   post-abstain frame is not stale (false DANGER)
             with state.lock:
                 state.activity = "OUT OF DOMAIN — abstaining"
+                if not state.abstaining:      # log START of the monitoring gap (audit)
+                    state.abstaining = True
+                    state.lg.log(EL.DOMAIN_ABSTAIN, csec, severity=EL.WARNING,
+                                 description=f"OOD guard abstaining — monitoring suspended: {dom['reason']}")
+                    state.events = state.lg.events()
             time.sleep(max(0.1, every))
             continue
+        if state.abstaining:                  # back in domain -> log END of the gap
+            with state.lock:
+                state.abstaining = False
+                state.lg.log(EL.DOMAIN_ABSTAIN, csec, severity=EL.INFO,
+                             description="OOD guard: scene back in domain — monitoring resumed")
+                state.events = state.lg.events()
         try:
             perc = V.analyze_window([frame], cfg, session=sess)
         except Exception:
