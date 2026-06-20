@@ -25,6 +25,7 @@ from render_gui import compose
 from gui_theme import build_fonts, geometry, NOW
 import vlm_client as V
 import operator_safety as osf
+import domain_guard
 from coverage import mesh_installs
 from operator_safety import classify_sessions
 import event_log as EL
@@ -59,6 +60,14 @@ def perception_worker(state, cfg, t0, every, stop):
             time.sleep(0.2)
             continue
         csec = time.time() - t0
+        # OOD domain guard (opt-in): abstain on an out-of-domain frame instead of
+        # judging it. Disabled by default -> no VLM call, behaviour unchanged.
+        dom = domain_guard.in_domain(frame, cfg, session=sess)
+        if not dom["in_domain"]:
+            with state.lock:
+                state.activity = "OUT OF DOMAIN — abstaining"
+            time.sleep(max(0.1, every))
+            continue
         try:
             perc = V.analyze_window([frame], cfg, session=sess)
         except Exception:

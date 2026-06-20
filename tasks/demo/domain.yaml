@@ -1,0 +1,5 @@
+enabled: false
+send_w: 768
+question: >-
+  Does this image show a workplace with workers who should be wearing PPE
+  (helmet / hi-vis vest)? Answer JSON only: {"in_domain": true|false, "reason": "<short>"}

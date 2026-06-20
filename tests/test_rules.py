@@ -1,6 +1,16 @@
 """Verdict-rules engine + the face_support decision tables (the configurable rules)."""
-from rules_engine import decide
+from rules_engine import decide, decide_traced
 from rule_config import RULES
+
+
+def test_decide_traced_reports_which_rule_fired():
+    t = {"rules": [{"when": {"a": True}, "verdict": "X"},
+                   {"when": {"b": True}, "verdict": "Y"}], "default": "D"}
+    assert decide_traced(t, {"a": True}) == ("X", 0)
+    assert decide_traced(t, {"a": False, "b": True}) == ("Y", 1)
+    assert decide_traced(t, {}) == ("D", -1)          # fail-safe default
+    # decide() and decide_traced() agree on the verdict
+    assert decide(t, {"a": True}) == decide_traced(t, {"a": True})[0]
 
 
 def test_decide_first_match_then_failsafe_default():

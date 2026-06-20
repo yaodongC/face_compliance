@@ -14,3 +14,13 @@ def decide(table: dict, facts: dict):
         if all(facts.get(k) == v for k, v in row["when"].items()):
             return row["verdict"]
     return table["default"]          # fail-safe (validated present at load)
+
+
+def decide_traced(table: dict, facts: dict):
+    """Like decide() but also returns which rule fired: (verdict, rule_index), where
+    rule_index is the matched 0-based row or -1 for the fail-safe default. For audit
+    provenance — recording which rule produced a verdict."""
+    for i, row in enumerate(table["rules"]):
+        if all(facts.get(k) == v for k, v in row["when"].items()):
+            return row["verdict"], i
+    return table["default"], -1

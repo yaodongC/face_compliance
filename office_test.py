@@ -21,6 +21,7 @@ import yaml
 from live_source import open_source
 import vlm_client as V
 import operator_safety as osf
+import domain_guard
 
 
 def main():
@@ -35,6 +36,7 @@ def main():
     Path(a.save).mkdir(parents=True, exist_ok=True)
     sess = requests.Session()
 
+    GUARD_SPEC = {**domain_guard.load_spec(), "enabled": True}   # force-on for the demo
     url = a.url or cfg.get("input")          # env vars expanded inside open_source
     src = open_source(url)
     print(f"connected to {url.split('@')[-1] if '@' in url else url}\n")   # don't echo creds
@@ -45,14 +47,16 @@ def main():
         last = time.time()
         perc = V.analyze_window([frame], cfg, session=sess)
         op = osf.detect_person(frame, cfg, session=sess)
+        guard = domain_guard.in_domain(frame, cfg, session=sess, spec=GUARD_SPEC)
         i = len(rows)
         cv2.imwrite(f"{a.save}/office_{i:02d}.png", cv2.resize(frame, (960, 540)))
-        rows.append({"perc": perc, "op": op})
+        rows.append({"perc": perc, "op": op, "guard": guard})
         print(f"[{i}] scene: {perc.get('scene','')[:70]}")
         print(f"    face_screened={perc['face_screened']}  drill_active={perc['drill_active']}  "
               f"arms_parked={perc['arms_parked']}  person_in_danger={perc['person_in_danger']}")
         print(f"    operator_detected={op['person_in_front']}  vlm_person={op.get('vlm_person')}  "
               f"orange={op.get('orange_frac')}")
+        print(f"    domain_guard: in_domain={guard['in_domain']}  ({guard['reason'][:46]})")
         if len(rows) >= a.n:
             break
     src.release()
@@ -69,6 +73,9 @@ def main():
           f"{'<-- FALSE ALARM' if false_alarm else 'OK (none)'}")
     print(f"OPERATOR false positives:                   {op_fp}  "
           f"{'<-- FALSE POSITIVE' if op_fp else 'OK (none)'}")
+    guarded = sum(1 for r in rows if not r["guard"]["in_domain"])
+    print(f"DOMAIN GUARD abstains (out-of-domain):       {guarded}/{len(rows)}  "
+          f"{'<-- correctly abstains' if guarded == len(rows) else '(guard let some through)'}")
     Path("data/office_test.json").write_text(json.dumps(rows, indent=2))
     verdict = "PASS - no false alarms / hallucinations" if not (false_safe or false_alarm or op_fp) \
         else "FAIL - see flags above"

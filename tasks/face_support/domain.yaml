@@ -1,0 +1,8 @@
+# Out-of-domain GUARD. enabled:false keeps current behaviour. Set true to make an
+# out-of-domain frame (office, vehicle, surface) ABSTAIN instead of being judged.
+enabled: false
+send_w: 768
+question: >-
+  Is this the front camera of a drill JUMBO facing the flat rock END FACE inside an
+  underground hard-rock mine heading (NOT an office, a vehicle cab, or a surface yard)?
+  Answer JSON only: {"in_domain": true|false, "reason": "<short>"}
