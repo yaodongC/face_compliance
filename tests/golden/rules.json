@@ -84,214 +84,228 @@
   },
   "sessions": [
     {
-      "action": "standing",
+      "start": 757.3,
       "end": 765.3,
-      "entry_boom_moving": true,
       "entry_motion": 0.066,
+      "entry_imu": null,
+      "entry_boom_moving": true,
+      "verdict": "NON_COMPLIANT_ENTRY",
+      "action": "standing",
       "n_frames": 2,
       "person_bbox": [
         0.29,
         0.68,
         0.39,
         0.92
-      ],
-      "start": 757.3,
-      "verdict": "NON_COMPLIANT_ENTRY"
+      ]
     },
     {
-      "action": "standing",
+      "start": 833.4,
       "end": 837.2,
-      "entry_boom_moving": false,
       "entry_motion": 0.009,
+      "entry_imu": null,
+      "entry_boom_moving": false,
+      "verdict": "SAFE_RELOAD",
+      "action": "standing",
       "n_frames": 2,
       "person_bbox": [
         0.27,
         0.73,
         0.42,
         1.0
-      ],
-      "start": 833.4,
-      "verdict": "SAFE_RELOAD"
+      ]
     },
     {
-      "action": "standing",
+      "start": 997.3,
       "end": 1005.3,
-      "entry_boom_moving": true,
       "entry_motion": 0.055,
+      "entry_imu": null,
+      "entry_boom_moving": true,
+      "verdict": "NON_COMPLIANT_ENTRY",
+      "action": "standing",
       "n_frames": 2,
       "person_bbox": [
         0.35,
         0.72,
         0.42,
         0.98
-      ],
-      "start": 997.3,
-      "verdict": "NON_COMPLIANT_ENTRY"
+      ]
     },
     {
-      "action": "fitting a friction bolt",
+      "start": 1265.4,
       "end": 1265.4,
-      "entry_boom_moving": false,
       "entry_motion": 0.023,
+      "entry_imu": null,
+      "entry_boom_moving": false,
+      "verdict": "SAFE_RELOAD",
+      "action": "fitting a friction bolt",
       "n_frames": 1,
       "person_bbox": [
         0.32,
         0.6,
         0.4,
         0.75
-      ],
-      "start": 1265.4,
-      "verdict": "SAFE_RELOAD"
+      ]
     },
     {
-      "action": "standing",
+      "start": 1377.3,
       "end": 1385.3,
-      "entry_boom_moving": false,
       "entry_motion": 0.0,
+      "entry_imu": null,
+      "entry_boom_moving": false,
+      "verdict": "SAFE_RELOAD",
+      "action": "standing",
       "n_frames": 2,
       "person_bbox": [
         0.27,
         0.72,
         0.35,
         0.98
-      ],
-      "start": 1377.3,
-      "verdict": "SAFE_RELOAD"
+      ]
     },
     {
-      "action": "fitting a friction bolt",
+      "start": 1469.4,
       "end": 1497.2,
-      "entry_boom_moving": false,
       "entry_motion": 0.022,
+      "entry_imu": null,
+      "entry_boom_moving": false,
+      "verdict": "SAFE_RELOAD",
+      "action": "fitting a friction bolt",
       "n_frames": 3,
       "person_bbox": [
         0.43,
         0.73,
         0.53,
         0.85
-      ],
-      "start": 1469.4,
-      "verdict": "SAFE_RELOAD"
+      ]
     },
     {
-      "action": "standing",
+      "start": 1529.4,
       "end": 1537.4,
-      "entry_boom_moving": true,
       "entry_motion": 0.138,
+      "entry_imu": null,
+      "entry_boom_moving": true,
+      "verdict": "NON_COMPLIANT_ENTRY",
+      "action": "standing",
       "n_frames": 2,
       "person_bbox": [
         0.56,
         0.34,
         0.66,
         0.44
-      ],
-      "start": 1529.4,
-      "verdict": "NON_COMPLIANT_ENTRY"
+      ]
     },
     {
-      "action": "standing",
+      "start": 1633.3,
       "end": 1641.4,
-      "entry_boom_moving": true,
       "entry_motion": 0.05,
+      "entry_imu": null,
+      "entry_boom_moving": true,
+      "verdict": "NON_COMPLIANT_ENTRY",
+      "action": "standing",
       "n_frames": 2,
       "person_bbox": [
         0.23,
         0.88,
         0.29,
         0.99
-      ],
-      "start": 1633.3,
-      "verdict": "NON_COMPLIANT_ENTRY"
+      ]
     },
     {
-      "action": "walking",
+      "start": 2017.4,
       "end": 2025.4,
-      "entry_boom_moving": true,
       "entry_motion": 0.091,
+      "entry_imu": null,
+      "entry_boom_moving": true,
+      "verdict": "NON_COMPLIANT_ENTRY",
+      "action": "walking",
       "n_frames": 2,
       "person_bbox": [
         0.16,
         0.88,
         0.25,
         1.0
-      ],
-      "start": 2017.4,
-      "verdict": "NON_COMPLIANT_ENTRY"
+      ]
     },
     {
-      "action": "walking",
+      "start": 2217.2,
       "end": 2241.3,
-      "entry_boom_moving": false,
       "entry_motion": 0.0,
+      "entry_imu": null,
+      "entry_boom_moving": false,
+      "verdict": "SAFE_RELOAD",
+      "action": "walking",
       "n_frames": 4,
       "person_bbox": [
         0.18,
         0.88,
         0.28,
         1.0
-      ],
-      "start": 2217.2,
-      "verdict": "SAFE_RELOAD"
+      ]
     },
     {
-      "action": "standing",
+      "start": 2517.2,
       "end": 2517.2,
-      "entry_boom_moving": false,
       "entry_motion": 0.0,
+      "entry_imu": null,
+      "entry_boom_moving": false,
+      "verdict": "SAFE_RELOAD",
+      "action": "standing",
       "n_frames": 1,
       "person_bbox": [
         0.38,
         0.64,
         0.44,
         0.78
-      ],
-      "start": 2517.2,
-      "verdict": "SAFE_RELOAD"
+      ]
     },
     {
-      "action": "standing",
+      "start": 2713.3,
       "end": 2713.3,
-      "entry_boom_moving": true,
       "entry_motion": 0.051,
+      "entry_imu": null,
+      "entry_boom_moving": true,
+      "verdict": "NON_COMPLIANT_ENTRY",
+      "action": "standing",
       "n_frames": 1,
       "person_bbox": [
         0.42,
         0.62,
         0.48,
         0.76
-      ],
-      "start": 2713.3,
-      "verdict": "NON_COMPLIANT_ENTRY"
+      ]
     },
     {
-      "action": "standing",
+      "start": 2873.5,
       "end": 2873.5,
-      "entry_boom_moving": true,
       "entry_motion": 0.046,
+      "entry_imu": null,
+      "entry_boom_moving": true,
+      "verdict": "NON_COMPLIANT_ENTRY",
+      "action": "standing",
       "n_frames": 1,
       "person_bbox": [
         0.465,
         0.636,
         0.532,
         0.708
-      ],
-      "start": 2873.5,
-      "verdict": "NON_COMPLIANT_ENTRY"
+      ]
     },
     {
-      "action": "standing",
+      "start": 3201.3,
       "end": 3209.3,
-      "entry_boom_moving": false,
       "entry_motion": 0.011,
+      "entry_imu": null,
+      "entry_boom_moving": false,
+      "verdict": "SAFE_RELOAD",
+      "action": "standing",
       "n_frames": 2,
       "person_bbox": [
         0.24,
         0.83,
         0.34,
         1.0
-      ],
-      "start": 3201.3,
-      "verdict": "SAFE_RELOAD"
+      ]
     }
   ],
   "width_coverage": {

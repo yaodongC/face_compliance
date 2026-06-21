@@ -31,3 +31,11 @@ coverage:
   min_overlap: 0.02
   full_coverage_frac: 0.98
   segments: 4
+  # --- SIZE-DEPENDENT support requirement (the # of meshes/bolts depends on FACE SIZE,
+  #     not a fixed 4/16). face_width is MEASURED from the front Lidar (accumulated scans).
+  #     The mesh/bolt RULE (sheet width, overlap, 4'x5' pattern) is the single source of
+  #     truth in vale_support.py, distilled from the Vale documents — NOT configured here.
+  bolts_per_screen: 4        # leading-edge minimum bolts/screen (cross-check; vale_support authoritative)
+  bolt_min_dur: 40           # IMU sustained-drilling seconds for one bolt hole
+  bolt_min_peak: 0.05        # IMU accel-std peak for a real drilling episode
+  face_width_default: 6.0    # fallback face width (m) if the Lidar measurement is absent
