@@ -247,14 +247,32 @@ flowchart TD
     RG --> OUT2["GUI MP4"]
 ```
 
-### A. Quick — live monitor over any MP4 (one command)
-Runs the real perception pipeline frame-by-frame on the MP4 and writes the composed
-monitor UI to an MP4. Needs the VLM server running.
+### A. Real-time live monitor (`live_gui.py`)
+Runs the real perception pipeline in real time and composes the monitor UI at display
+rate. Needs the VLM server running (`curl http://localhost:8000/v1/models`).
+
 ```bash
-python3 live_gui.py --input data/full_cycle.mp4 --out data/full_cycle_gui.mp4
-# options: --seconds N  (limit duration)   --display  (also show on DISPLAY=:0)
+# Run the GUI on the recorded data, live in a window (DISPLAY=:0):
+python3 live_gui.py --input data/full_cycle.mp4 --display
+
+# Headless (no window) — watch data/live_frame.png refresh, optionally record:
+python3 live_gui.py --input data/full_cycle.mp4 --out data/live.mp4
+
+# Live RTSP camera (credentials from env, never committed):
+export RTSP_USER=<user> RTSP_PASS=<pass>
+python3 live_gui.py --input 'rtsp://${RTSP_USER}:${RTSP_PASS}@10.20.30.40:554/cam0_0' --display
 ```
-Use this for an arbitrary clip when you don't already have cached analysis.
+Flags: `--display` (cv2 window), `--out FILE` (record), `--every N` (perception interval s,
+default 5), `--seconds N` (auto-stop), `--snapshot` (headless latest-frame PNG).
+
+**What populates live vs. from cache:** the live monitor tracks **operator safety** and
+**mesh installs** in real time from the video; the **compliance checklist** shows the
+size-derived requirement (`/4` panels, `/16` bolts) and the startup rationale from the
+**cached Lidar+Vale evidence** (`face_geometry.json`, `imu_timeline.json`,
+`compliance_result.json`) — so run the offline pipeline once first. The **bolt count needs
+the IMU** (video-only streams have none), so on a pure live camera the bolt/compliance items
+stay pending; for the recorded session the canonical full monitor (with correct completion
+times) is the offline render in **§B**.
 
 ### B. Offline render from cached analysis (deterministic, fast replay)
 `render_gui.py` composites the UI from a video plus **precomputed** artifacts
@@ -327,16 +345,19 @@ flowchart LR
 ## Run it
 ```bash
 # serve the model (offline once weights are cached): see ../install.md
-# --- LIVE monitor (reads config.yaml `input:` — file or RTSP) ---
-python3 live_gui.py                      # headless: writes data/live_frame.png + optional --out
-python3 live_gui.py --display            # on a display (DISPLAY=:0)
-python3 live_gui.py --input data/full_cycle.mp4 --seconds 60 --out data/live.mp4
+# --- RUN THE GUI WITH DATA IN REAL TIME (live monitor, window on DISPLAY=:0) ---
+python3 live_gui.py --input data/full_cycle.mp4 --display
+python3 live_gui.py                      # headless (config.yaml `input:`): writes data/live_frame.png
+python3 live_gui.py --input 'rtsp://${RTSP_USER}:${RTSP_PASS}@<ip>:554/<stream>' --display  # live camera
 
-# --- OFFLINE pipeline on recorded bags ---
+# --- OFFLINE pipeline on recorded bags (precompute the cached Lidar+Vale evidence first) ---
 python3 extract_video.py --bags ../<bag>.bag ...          # bags -> MP4 + index
 python3 make_2x.py                                        # smooth 2x real-time video of the full cycle
 python3 scan_operator.py --bags 0-56                      # full-session operator scan (VLM + IMU) -> data/operator_events.json
-python3 build_event_log.py                               # -> data/event_log.jsonl (external memory)
+python3 face_geometry.py                                  # Lidar face size -> data/face_geometry.json (N meshes/bolts)
+python3 imu_analyzer.py --bags 0-56                       # IMU drilling episodes -> data/imu_timeline.json
+python3 compliance_milestone.py                          # -> data/compliance_result.json (latched compliance)
+python3 build_event_log.py                               # -> data/event_log.jsonl (+ system-init rationale)
 python3 render_gui.py --video data/full_cycle.mp4 \
   --analysis data/full_cycle_analysis.json --index data/full_cycle.idx \
   --events data/event_log.jsonl --operator data/operator_events.json \
@@ -368,15 +389,26 @@ flowchart TB
     CAM["CAMERA FEED (hero) — danger-zone ROI + operator bbox; turns red on DANGER"]
     OSC["OPERATOR SAFETY card — CLEAR / DANGER + reason"]
     MESH["MESH INSTALLATION card — count + INSTALLS timeline + DANGER-ZONE ENTRIES timeline"]
-    LOG["EVENT LOG — durable incident timeline (recent entries + violation count)"]
+    CHK["COMPLIANCE CHECKLIST card — Vale-cited checks with completion times + COMPLIANT banner"]
+    LOG["EVENT LOG (narrowed) — durable incident timeline (recent entries + violation count)"]
     FOOT["ASSISTIVE MONITOR · NOT A CERTIFIED SAFETY SYSTEM · VERIFY ON SITE"]
     H --> CAM
     CAM --> OSC
     OSC --> MESH
+    MESH --> CHK
     CAM --> LOG
-    MESH --> LOG
+    CHK --> FOOT
     LOG --> FOOT
 ```
+
+The **COMPLIANCE CHECKLIST** card (below the mesh-installation card; the event log is
+narrowed to the camera width to make room) tracks the Vale face-support requirements as
+they are satisfied, each with its completion time:
+`End face screened` · `Bolt pattern installed (4'×5')` · `Screen tight to walls & BOR` ·
+`Workers clear of bad ground` · `Support done before drilling` → **FACE SUPPORT COMPLIANT**.
+Every item cites a specific requirement from *CMTS-2015-001 Rev5* / *Division 6* and is
+driven by the fused evidence (mesh installs, IMU bolt count, operator safety, compliance
+milestone) — see `compliance_checklist.py`.
 
 `compose()` in `render_gui.py` draws one frame from a state dict and is shared by the
 offline renderer and the live monitor (`live_gui.py`), so both look identical. The
@@ -463,6 +495,7 @@ wrong rule is a hazard. A run records its task + bundle hashes in
 | `classify_episodes.py` | VLM classification of each IMU work-window (bolt-install cross-check) |
 | `eval_compliance.py` | F1–F3 + accuracy of the milestone vs `eval/cycle_gt.json` |
 | `render_compliance.py` / `render_mesh_layout.py` / `render_face_profile.py` | compliance GUI MP4, mesh-panel layout, arched cross-section |
+| `compliance_checklist.py` | Vale-grounded compliance checklist (each item cites a CMTS-2015-001 / Div6 requirement) evaluated at each cycle-time with completion times |
 | `event_log.py` / `build_event_log.py` | external-memory event log |
 | `office_test.py` | out-of-domain false-alarm / hallucination test |
 | `config.yaml` / `tasks/<t>/params.yaml` | input source, `face_crop`, `imu_active_thr`, `min_orange`, `boom_motion_thresh`, endpoint |

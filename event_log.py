@@ -27,6 +27,7 @@ VIOLATION = "VIOLATION"    # non-compliant operation
 CRITICAL = "CRITICAL"      # accident / imminent harm
 
 # event types
+SYSTEM_INIT = "system_init"                        # startup: face measurement + Vale requirement
 SCREEN_INSTALLED = "screen_installed"
 COVERAGE_FULL = "coverage_full"
 FACE_SUPPORTED = "face_supported"

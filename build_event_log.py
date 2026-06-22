@@ -36,6 +36,31 @@ def _cycle_mapper(index_path):
     return m
 
 
+def _log_init(lg, geom="data/face_geometry.json"):
+    """Emit startup messages explaining the size-derived support requirement: the Lidar
+    measured the face, and the Vale standards turn that size into the # of meshes/bolts.
+    Reads data/face_geometry.json; degrades to the configured default if it is absent."""
+    g = json.loads(Path(geom).read_text()) if Path(geom).exists() else {}
+    try:
+        import progress_tracker as pt
+        tg = pt.load_targets()
+        nm, nb = tg["meshes_required"], tg["bolts_required"]
+        fw = g.get("face_width") or tg.get("face_width")
+    except Exception:
+        nm, nb, fw = g.get("meshes_required", 4), g.get("bolts_required", 16), g.get("face_width")
+    fh = g.get("face_height")
+    src = "lidar+vale" if g.get("face_width") else "default(no lidar)"
+    dim = f"{fw:.1f} x {fh:.1f} m" if (fw and fh) else (f"{fw:.1f} m wide" if fw else "size n/a")
+    sheet = g.get("sheet_w_ft", 6.0)
+    lg.log(EL.SYSTEM_INIT, 0.0, severity=EL.INFO, source="lidar",
+           description=f"Front Livox Mid360 measured end face: {dim} (gravity-leveled scan)")
+    lg.log(EL.SYSTEM_INIT, 0.0, severity=EL.INFO, source="vale",
+           description=f"Vale CMTS-2015-001/Div6: {int(sheet)}ft screens, 1ft overlap "
+                       f"-> {nm} mesh panels for this face")
+    lg.log(EL.SYSTEM_INIT, 0.0, severity=EL.INFO, source="vale",
+           description=f"Bolt pattern 4'x5' (4 bolts/screen) -> {nb} bolts required  [{src}]")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--analysis", default="data/full_cycle_analysis.json")
@@ -45,6 +70,10 @@ def main():
     a = ap.parse_args()
     lg = EL.EventLogger(a.out, reset=True)
     cyc = _cycle_mapper(a.index)
+
+    # --- SYSTEM INIT: record WHY this face needs N meshes / M bolts, grounded in the
+    # Lidar measurement + the Vale documents, at the start of the timeline (cycle 0). ---
+    _log_init(lg)
 
     # operator danger-zone ENTRIES from the VLM operator scan (confirms a PERSON, so
     # no orange-colour false positives). The operator must enter to reload - that is

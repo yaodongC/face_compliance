@@ -21,13 +21,15 @@ import cv2
 import requests
 import yaml
 from live_source import open_source
-from render_gui import compose
+from render_gui import compose, _build_checklist_signals
 from gui_theme import build_fonts, geometry, NOW
 import vlm_client as V
 import operator_safety as osf
 import domain_guard
 from coverage import mesh_installs
 from operator_safety import classify_sessions
+from compliance_checklist import evaluate_checklist
+from build_event_log import _log_init
 import event_log as EL
 
 
@@ -134,6 +136,9 @@ def main():
     print(f"input: {inp}  ({'live RTSP' if inp.startswith('rtsp://') else 'file'})")
 
     state = LiveState("data/live_events.jsonl")
+    _log_init(state.lg)                       # startup rationale (Lidar face size -> Vale N meshes/bolts)
+    state.events = state.lg.events()
+    chk_base = _build_checklist_signals([], [])   # cached Vale/IMU evidence (bolts, targets, complete)
     F, g = build_fonts(), geometry()
     src = open_source(inp)
     t0 = time.time()
@@ -153,6 +158,11 @@ def main():
                       "n_mesh": sum(1 for i in state.installs if i["time"] <= csec + 0.1),
                       "installs": list(state.installs), "entries": list(state.entries),
                       "events": list(state.events), "activity": state.activity, "blink": blink}
+                sig = dict(chk_base)            # live screens/safety + cached Vale/IMU requirement
+                sig["screen_times"] = [i["time"] for i in state.installs]
+                sig["danger_times"] = [e["time"] for e in state.entries
+                                       if e.get("verdict") == "NON_COMPLIANT_ENTRY"]
+                st["checklist"] = evaluate_checklist(sig, csec)
             canvas = compose(frame, st, F, g)
             if writer:
                 writer.write(canvas)
