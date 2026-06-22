@@ -22,6 +22,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import yaml
 from coverage import mesh_installs
+from compliance_checklist import evaluate_checklist
 from gui_theme import (BG, SURFACE, DANGER_BG, HAIR, INK, MUTED, FAINT, CLEAR, DANGER,
                        AMBER, WARN, SEV, NOW, build_fonts, geometry,
                        _tracked, _right, _wrap)
@@ -50,6 +51,75 @@ def _danger_active(dwins, csec):
     return any(a - 0.1 <= csec <= b + 0.1 for a, b in dwins)
 
 
+def _build_checklist_signals(installs, entries):
+    """Assemble the Vale-checklist signals from the fused harness evidence (mesh installs
+    from operator tracking, bolt count from the IMU, required counts + completion from the
+    compliance milestone). Degrades gracefully if an artifact is absent."""
+    sig = {"screen_times": [i["time"] for i in installs],
+           "n_screens_req": len(installs) or 4,
+           "bolt_times": [], "n_bolts_req": 16,
+           "danger_times": [e["time"] for e in entries if e.get("verdict") == "NON_COMPLIANT_ENTRY"],
+           "complete_at": None}
+    try:
+        import progress_tracker as pt
+        tg = pt.load_targets()
+        sig["n_screens_req"] = tg["meshes_required"]
+        sig["n_bolts_req"] = tg["bolts_required"]
+        tl = pt.load_evidence()[0]
+        sig["bolt_times"] = [b["set_at"] for b in pt.bolt_episodes(tl)]
+    except Exception as e:
+        print(f"[render_gui] checklist: bolt/target signals unavailable ({e})")
+    try:
+        res = json.loads(Path("data/compliance_result.json").read_text())
+        sig["complete_at"] = res.get("complete_at")
+    except Exception:
+        pass
+    return sig
+
+
+def _draw_checklist(d, box, items, F):
+    """Vale-grounded compliance checklist card: one row per regulation-cited check, with a
+    tick + completion time when done; an overall COMPLIANT banner at the bottom."""
+    from gui_theme import SURFACE, HAIR, INK, MUTED, FAINT, CLEAR, AMBER
+    x0, y0, x1, y1 = box
+    d.rounded_rectangle(box, radius=14, fill=SURFACE, outline=HAIR, width=1)
+    _tracked(d, (x0 + 22, y0 + 14), "COMPLIANCE CHECKLIST", F["eye"], MUTED, 2)
+    _right(d, x1 - 20, y0 + 13, "Vale CMTS-2015-001 / Div 6", F["small"], FAINT)
+    rows = [it for it in items if not it.get("overall")]
+    overall = next((it for it in items if it.get("overall")), None)
+    ry = y0 + 40
+    for it in rows:
+        done = it["done"]
+        bx, by = x0 + 22, ry + 1
+        d.rounded_rectangle([bx, by, bx + 13, by + 13], radius=3,
+                            fill=CLEAR if done else None, outline=CLEAR if done else HAIR, width=1)
+        if done:                                   # drawn check mark (font-independent)
+            d.line([bx + 3, by + 7, bx + 6, by + 10], fill=(12, 22, 16), width=2)
+            d.line([bx + 6, by + 10, bx + 11, by + 3], fill=(12, 22, 16), width=2)
+        d.text((x0 + 44, ry), it["label"], font=F["small"], fill=INK if done else MUTED)
+        if done and it.get("done_time") is not None:
+            t = int(it["done_time"])
+            _right(d, x1 - 20, ry, f"{t//60:02d}:{t%60:02d}", F["small"], CLEAR)
+        elif done:
+            _right(d, x1 - 20, ry, "ok", F["small"], CLEAR)
+        else:
+            _right(d, x1 - 20, ry, it.get("detail", ""), F["small"],
+                   AMBER if it.get("detail") else MUTED)
+        ry += 17
+    if overall is not None:
+        oy = y1 - 30
+        odone = overall["done"]
+        d.rounded_rectangle([x0 + 14, oy, x1 - 14, oy + 23], radius=6,
+                            fill=(12, 42, 28) if odone else (44, 36, 12))
+        nd = sum(1 for it in rows if it["done"])
+        if odone and overall.get("done_time") is not None:
+            t = int(overall["done_time"])
+            txt = f"FACE SUPPORT COMPLIANT  ·  {t//60:02d}:{t%60:02d}"
+        else:
+            txt = f"IN PROGRESS  ·  {nd}/{len(rows)} checks"
+        d.text((x0 + 26, oy + 3), txt, font=F["body"], fill=CLEAR if odone else AMBER)
+
+
 def compose(frame_bgr, state, F, g):
     """Draw one monitor frame. state keys: csec, danger, n_mesh, installs, entries,
     events, activity, t_end, blink. Returns a BGR ndarray."""
@@ -57,6 +127,7 @@ def compose(frame_bgr, state, F, g):
     vx, vy, vw, vh = g["vx"], g["vy"], g["vw"], g["vh"]
     rx, rw = g["rx"], g["rw"]
     safe_box, mesh_box, log_box = g["safe_box"], g["mesh_box"], g["log_box"]
+    checklist_box = g["checklist_box"]
     csec, danger, t_end = state["csec"], state["danger"], max(state["t_end"], 1.0)
     installs, entries, events = state["installs"], state["entries"], state["events"]
     n_mesh = state["n_mesh"]
@@ -137,21 +208,26 @@ def compose(frame_bgr, state, F, g):
     d.text((ax0, mesh_box[3] - 22), "00:00", font=F["mono"], fill=FAINT)
     _right(d, ax1, mesh_box[3] - 22, f"{int(t_end)//60:02d}:{int(t_end)%60:02d}", F["mono"], FAINT)
 
-    # event-log timeline
+    # event-log timeline (narrowed to the camera width; checklist card sits to its right)
+    lx0, lx1 = log_box[0], log_box[2]
     d.rounded_rectangle(log_box, radius=14, fill=SURFACE, outline=HAIR, width=1)
-    _tracked(d, (M + 22, log_box[1] + 20), "EVENT LOG", F["eye"], MUTED, 2)
+    _tracked(d, (lx0 + 22, log_box[1] + 20), "EVENT LOG", F["eye"], MUTED, 2)
     nviol = sum(1 for e in events if e.get("severity") == "VIOLATION" and e.get("cycle_sec", 0) <= csec + 0.1)
-    _right(d, W - M - 22, log_box[1] + 16, f"{nviol} violations", F["small"], DANGER if nviol else MUTED)
+    _right(d, lx1 - 22, log_box[1] + 16, f"{nviol} violations", F["small"], DANGER if nviol else MUTED)
     shown = [e for e in events if e.get("cycle_sec", 0) <= csec + 0.1][-5:]
     ey = log_box[1] + 48
+    logw = int(lx1 - lx0)
     for e in shown:
         ec = int(e.get("cycle_sec", 0))
         col = SEV.get(e.get("severity", "INFO"), MUTED)
-        d.text((M + 22, ey), f"{ec//60:02d}:{ec%60:02d}", font=F["monob"], fill=MUTED)
-        d.ellipse([M + 92, ey + 5, M + 102, ey + 15], fill=col)
-        d.text((M + 116, ey), e.get("description", "")[:96], font=F["body"],
+        d.text((lx0 + 22, ey), f"{ec//60:02d}:{ec%60:02d}", font=F["monob"], fill=MUTED)
+        d.ellipse([lx0 + 92, ey + 5, lx0 + 102, ey + 15], fill=col)
+        d.text((lx0 + 116, ey), e.get("description", "")[:max(20, (logw - 140) // 8)], font=F["body"],
                fill=INK if e.get("severity") in ("VIOLATION", "WARNING") else MUTED)
         ey += 22
+
+    # compliance-checklist card (Vale-grounded) — below the mesh-installation card
+    _draw_checklist(d, checklist_box, state.get("checklist", []), F)
 
     _tracked(d, (M, H - 22), "ASSISTIVE MONITOR  ·  NOT A CERTIFIED SAFETY SYSTEM  ·  VERIFY ON SITE",
              F["small"], FAINT, 1)
@@ -173,6 +249,7 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
                for s in classify_sessions(ops)] if ops else []
     dwins = [(e["time"] - 1, max(e["end"], e["time"] + 13)) for e in entries
              if e["verdict"] == "NON_COMPLIANT_ENTRY"]
+    checklist_sig = _build_checklist_signals(installs, entries)
 
     cap = cv2.VideoCapture(video)
     vfps = cap.get(cv2.CAP_PROP_FPS) or fps
@@ -200,7 +277,8 @@ def render(video, analysis, out, index_path=None, fps=15.0, face_crop=None,
         state = {"csec": csec, "danger": danger, "t_end": t_end,
                  "n_mesh": sum(1 for i in installs if i["time"] <= csec + 0.1),
                  "installs": installs, "entries": entries, "events": events,
-                 "activity": NOW.get(cur_step(t)["verdict"], "Monitoring"), "blink": fno}
+                 "activity": NOW.get(cur_step(t)["verdict"], "Monitoring"), "blink": fno,
+                 "checklist": evaluate_checklist(checklist_sig, csec)}
         writer.write(compose(frame, state, F, g))
         fno += 1
     cap.release()

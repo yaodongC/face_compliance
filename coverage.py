@@ -51,10 +51,17 @@ def mesh_installs(events, gap=_CV["mesh_gap"], min_events=_CV["mesh_min_events"]
     The operator bolts ONE mesh over a sustained burst of visits (small time gaps),
     moving ACROSS the mesh width as they fit each bolt - so position drifts WITHIN a
     single mesh and must NOT be counted as a new one. A NEW mesh begins only after a
-    longer gap (>gap s), when the operator leaves to reload a fresh screen. An
-    episode must contain >= min_events detections (a real mesh takes several bolts),
-    so a brief blip is not counted. The number of meshes is emergent - it depends on
-    the face size and is NOT assumed. ESTIMATE (per-mesh detection is not exact)."""
+    longer gap (>gap s), when the operator leaves to reload a fresh screen. A well-
+    detected install is a dense episode (>= min_events detections). The number of meshes
+    is emergent - it depends on the face size and is NOT assumed. ESTIMATE.
+
+    SPARSE-INSTALL RECOVERY: late in the cycle the operator is detected only a few
+    times per visit (occlusion / sparser confirmation), so a real install can fragment
+    into several sub-threshold episodes split by `gap`. Dropping each fragment loses the
+    install entirely (this under-counted the 4th mesh as 3). Instead, consecutive
+    sub-threshold episodes are ACCUMULATED and emitted as ONE install once their
+    combined detections reach min_events - recovering a sparsely-detected install
+    without turning an isolated blip into a spurious mesh."""
     evs = sorted([e for e in events if e.get("person_bbox")], key=lambda x: x["cycle_sec"])
     episodes, cur = [], []
     for e in evs:
@@ -64,11 +71,28 @@ def mesh_installs(events, gap=_CV["mesh_gap"], min_events=_CV["mesh_min_events"]
         cur.append(e)
     if cur:
         episodes.append(cur)
-    installs = []
+
+    def _cx(ep):
+        return round(sum((e["person_bbox"][0] + e["person_bbox"][2]) / 2 for e in ep) / len(ep), 3)
+
+    installs, pending = [], []          # pending = run of consecutive sub-threshold episodes
     for ep in episodes:
-        if len(ep) >= min_events:
-            cx = sum((e["person_bbox"][0] + e["person_bbox"][2]) / 2 for e in ep) / len(ep)
-            installs.append({"time": ep[0]["cycle_sec"], "cx": round(cx, 3)})
+        if len(ep) >= min_events:        # a well-detected install
+            if sum(len(p) for p in pending) >= min_events:   # a sparse install preceded it
+                run = [e for p in pending for e in p]
+                installs.append({"time": run[0]["cycle_sec"], "cx": _cx(run)})
+            pending = []
+            installs.append({"time": ep[0]["cycle_sec"], "cx": _cx(ep)})
+        else:                            # sparse fragment -> accumulate
+            pending.append(ep)
+            if sum(len(p) for p in pending) >= min_events:
+                run = [e for p in pending for e in p]
+                installs.append({"time": run[0]["cycle_sec"], "cx": _cx(run)})
+                pending = []
+    if sum(len(p) for p in pending) >= min_events:           # trailing sparse install
+        run = [e for p in pending for e in p]
+        installs.append({"time": run[0]["cycle_sec"], "cx": _cx(run)})
+    installs.sort(key=lambda i: i["time"])
     return installs
 
 

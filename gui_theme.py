@@ -54,7 +54,10 @@ def geometry():
     g["rw"] = g["W"] - g["rx"] - g["M"]
     g["safe_box"] = (g["rx"], g["vy"], g["rx"] + g["rw"], g["vy"] + 176)
     g["mesh_box"] = (g["rx"], g["vy"] + 192, g["rx"] + g["rw"], g["vy"] + 484)
-    g["log_box"] = (g["M"], 586, g["W"] - g["M"], 748)
+    # bottom row: event log (narrowed to the camera width) + compliance checklist in the
+    # right column, directly under the mesh-installation card.
+    g["log_box"] = (g["M"], 586, g["vx"] + g["vw"], 748)
+    g["checklist_box"] = (g["rx"], 586, g["rx"] + g["rw"], 748)
     return g
 
 

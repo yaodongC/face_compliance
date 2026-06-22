@@ -6,6 +6,13 @@ screen-and-bolt cycle, using a local VLM (Qwen2.5-VL-32B served by vLLM on the
 Jetson Thor). Fully offline at inference. Reads from a **recorded MP4, ROS bags, or a
 live RTSP camera** — same code path.
 
+It now also includes a **Lidar-based face-measurement tool** and a **compliance-
+milestone detector**: it measures the precise face size from the front Livox Mid360,
+computes how many screens/bolts the face needs **from the Vale standards**, tracks
+bolting progress from the IMU, and recognises the moment the face becomes compliant
+(4 screens + 16 bolts for this heading). See **`COMPLIANCE_DETECTION.md`** for the full
+design, grounding, and evaluation.
+
 ## System at a glance
 
 ```mermaid
@@ -45,11 +52,70 @@ code** with classical gates and decision tables, never by the model's own verdic
   **REVIEW** tier flags machine-active moments where presence is uncertain.
 - **Mesh installation**: a running **count of screens installed** over the cycle,
   with an install timeline and a danger-zone-entry timeline.
+- **Required support from the Lidar + Vale docs**: the precise **face size**
+  (≈6.0 m × 5.5 m here, measured from accumulated, gravity-levelled Mid360 scans) and the
+  **meshes/bolts the face needs** derived from the Vale standards (4 meshes / 16 bolts here;
+  it scales with face size — a 4 m face → 3, an 8 m face → 5).
+- **Bolting progress + compliance milestone**: a live `bolts x/16` · `screens x/4` ·
+  `coverage %`, and a single **latched COMPLIANCE-COMPLETE** event when all are met and a
+  VLM hi-res look confirms the screened+bolted face (fail-safe; cannot fire early because the
+  physical IMU bolt-count holds it back). On the recorded cycle this fires at the right
+  moment (≈3290 s) with false-safe = 0.
 - **Event log**: a durable, append-only timeline of entries, violations and mesh
   installs — the system's external memory (the VLM is stateless).
-- It **never auto-certifies "supported."** Full mesh coverage can't be measured
-  reliably from this footage, so coverage stays *assistive* and defers to on-site
-  inspection.
+- Coverage from vision alone stays *assistive*; the **certifiable** quantities are the
+  Lidar-measured size, the IMU bolt-count, and the doc-derived requirement — always verify
+  ground support on site before anyone approaches a face.
+
+## Lidar face-measurement + Vale mesh count + compliance milestone
+
+The required support is **not assumed** — it is measured and derived per heading:
+
+```mermaid
+flowchart LR
+    LID["front Livox Mid360<br/>(non-repetitive scan)"] -->|accumulate while parked| DENSE["dense cloud<br/>(~6 M pts)"]
+    IMU2["front IMU gravity"] -->|level pitch/roll| DENSE
+    DENSE --> MEAS["measure_face_precise<br/>side-wall-plane width + floor→crown"]
+    MEAS --> SIZE["face size 6.0×5.5 m<br/>+ arched area + camera cross-check"]
+    SIZE --> VALE["vale_support<br/>(CMTS-2015-001 + Div6 rules)"]
+    VALE --> REQ["4 meshes / 16 bolts<br/>(scales with size, confidence ROBUST)"]
+    IMU3["IMU drilling episodes"] --> PROG["progress_tracker<br/>bolts(t)/screens(t)/coverage(t)"]
+    REQ --> PROG
+    PROG --> MILE["compliance_milestone<br/>(latched, fail-safe)"]
+    VLMc["VLM hi-res confirm"] --> MILE
+    MILE --> OUT["COMPLIANCE COMPLETE<br/>+ event log + GUI"]
+```
+
+- **Precise face size** (`lidar_analyzer.measure_face_precise`): accumulate ~300 Mid360
+  scans (parked) → level with the IMU gravity vector (the Lidar is pitched 23.5°) → drop the
+  boom cluster → width = distance between the fitted **side-wall planes** (robust to corner
+  flare), height = robust floor→crown. Result **5.99 m × 5.5 m**, ±0.13 m across bags, walls
+  planar to 0.13 m. A **camera-FOV cross-check** (`camera_crosscheck`) independently confirms
+  it (face fills ~73% of the HFOV at the 6.2 m standoff). The arched cross-section + true area
+  (29.9 m² vs 34.4 m² box) come from `face_profile`.
+- **Meshes from the Vale documents** (`vale_support`): 6′ screen sheets, 1′ overlap (3
+  squares), 4′×5′ bolt pattern → `meshes = ceil((W_ft − 1)/5)` = **4**; bolts **16** (CMTS
+  leading-edge minimum, = the 16 IMU drilling episodes) or **24** (Div6 Creighton 3-0-3). It
+  reports `mesh_layout` (panel x-spans + bolt grid) and a count-confidence margin.
+- **Milestone** (`compliance_milestone`): latches **COMPLIANCE COMPLETE** only when
+  `screens ≥ required ∧ bolts ≥ required ∧ coverage ∧ VLM confirms` — fail-safe, and it
+  cannot fire during active work because the IMU bolt-count is below target there.
+
+```bash
+python3 imu_analyzer.py    --bags 0-56     # -> data/imu_timeline.json (16 bolt episodes)
+python3 face_geometry.py                   # precise lidar measure + camera-check + Vale rules
+python3 vale_support.py                    # (standalone) meshes/bolts for the measured face
+python3 render_mesh_layout.py              # -> data/face_mesh_layout.png (panels + bolt grid)
+python3 render_face_profile.py             # -> data/face_profile.png (arched cross-section)
+python3 classify_episodes.py               # VLM cross-check of the IMU bolt windows
+python3 compliance_milestone.py            # -> data/compliance_result.json (latched t*)
+python3 eval_compliance.py [--vlm]         # F1-F3 + accuracy vs eval/cycle_gt.json
+```
+
+> Validated on one heading/session: false-safe = 0, fires at the parked compliant end
+> (≈3290 s), accuracy 1.00 on the labelled points. Generalisation to other face sizes is
+> built-in (the count scales with the measured size) but not yet confirmed on a second
+> heading; the boom-gap detector is tuned to this rig's standoff. See `COMPLIANCE_DETECTION.md`.
 
 ## How operator danger is decided
 
@@ -388,20 +454,35 @@ wrong rule is a hazard. A run records its task + bundle hashes in
 | `operator_safety.py` | operator detection + IMU-fused, entry-based danger classification (`classify_zone`, `machine_active`, `operator_present`, `classify_sessions`) |
 | `scan_operator.py` | full-session operator scan (VLM person + IMU machine-motion) → `operator_events.json` |
 | `coverage.py` | mesh-install counting (temporal episodes) |
+| `imu_analyzer.py` | IMU machine-activity envelope + drilling-episode segmentation → `imu_timeline.json` (bolt counter) |
+| `lidar_analyzer.py` | Mid360 scan accumulation, IMU-gravity levelling, **precise face measure** (`measure_face_precise`), arched profile (`face_profile`), camera FOV cross-check |
+| `vale_support.py` | **mesh/bolt count + layout from the Vale documents** (`meshes_required`, `mesh_layout`, `mesh_count_confidence`, `calc`) |
+| `face_geometry.py` | end-to-end tool: lidar measure → camera-check → Vale rules → `data/face_geometry.json` (+ PNGs) |
+| `progress_tracker.py` | fused `bolts(t)` / `screens(t)` / `coverage(t)`; size-derived targets via `load_targets` |
+| `compliance_milestone.py` | latched, fail-safe COMPLIANCE-COMPLETE state machine |
+| `classify_episodes.py` | VLM classification of each IMU work-window (bolt-install cross-check) |
+| `eval_compliance.py` | F1–F3 + accuracy of the milestone vs `eval/cycle_gt.json` |
+| `render_compliance.py` / `render_mesh_layout.py` / `render_face_profile.py` | compliance GUI MP4, mesh-panel layout, arched cross-section |
 | `event_log.py` / `build_event_log.py` | external-memory event log |
 | `office_test.py` | out-of-domain false-alarm / hallucination test |
 | `config.yaml` / `tasks/<t>/params.yaml` | input source, `face_crop`, `imu_active_thr`, `min_orange`, `boom_motion_thresh`, endpoint |
 
 ## Safety notes
-- **ASSISTIVE demo, NOT a certified safety system.** Coverage is advisory and the
-  harness never auto-certifies support — always physically verify ground support
-  before anyone approaches a face.
-- Per-mesh localisation and exact counts are estimates; the reliable output is the
-  operator-danger detection. Validation is on one mine session / one camera —
-  generalisation to other headings is not yet proven.
+- **ASSISTIVE demo, NOT a certified safety system.** The compliance-complete signal is
+  fail-safe (latched; requires the IMU bolt-count, screen count, coverage AND a VLM
+  confirmation; it cannot fire during active work) but it is still a demo — always
+  physically verify ground support before anyone approaches a face.
+- The Lidar face **size** is metric-accurate (direct ranging) and the mesh requirement
+  follows the Vale documents; the **bolt count** assumes one sustained IMU drilling episode
+  per bolt (16 here, VLM-cross-checked). Per-mesh visual localisation from the camera is NOT
+  reliable (the VLM over-counts panels), which is why the count comes from Lidar size + docs.
+- Validation is on **one mine session / one heading / one camera**: false-safe = 0, the
+  milestone fires at the parked compliant end, accuracy 1.00 on labelled points. The count
+  scales with measured face size by construction, but this is **not yet confirmed on a second
+  heading**, and the boom-gap detector is tuned to this rig's standoff (a far-standoff
+  variant was tried and reverted — see `_face_start_x` / `COMPLIANCE_DETECTION.md`).
 - The IMU machine-motion gate is validated to remove vision false positives on the
   recorded session; **recall of a genuine "operator present while machine moving"
   event is not yet validated end-to-end** (no such event occurs in the recording —
   operators only enter when the machine is stopped). A silent (non-vibrating) boom
   slew with an operator present remains a documented residual risk.
-```
